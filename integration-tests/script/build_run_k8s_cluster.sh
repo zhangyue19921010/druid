@@ -68,7 +68,6 @@ sudo /usr/local/bin/kubectl create -f druid-operator/deploy/role.yaml
 sudo /usr/local/bin/kubectl create -f druid-operator/deploy/role_binding.yaml
 sudo /usr/local/bin/kubectl create -f druid-operator/deploy/crds/druid.apache.org_druids_crd.yaml
 sudo /usr/local/bin/kubectl create -f druid-operator/deploy/operator.yaml
-sudo /usr/local/bin/kubectl apply -f druid-operator/examples/tiny-cluster-zk.yaml
 sudo /usr/local/bin/kubectl apply -f druid-operator/examples/tiny-cluster.yaml
 
 # Wait 4 * 15 seconds to launch pods.
