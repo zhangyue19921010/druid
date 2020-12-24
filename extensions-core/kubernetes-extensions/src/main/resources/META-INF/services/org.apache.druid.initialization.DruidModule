@@ -14,3 +14,4 @@
 # limitations under the License.
 
 org.apache.druid.k8s.discovery.K8sDiscoveryModule
+org.apache.druid.k8s.middlemanager.K8sMiddleManagerModule

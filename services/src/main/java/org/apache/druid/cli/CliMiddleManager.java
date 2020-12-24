@@ -93,7 +93,7 @@ public class CliMiddleManager extends ServerRunnable
   private boolean isZkEnabled = true;
 
   private static final String INDEXER_RUNNER_MODE = "druid.indexer.runner.mode";
-  private static final String INDEXER_RUNNER_MODE_DEFAULT = "local";
+  private static final String INDEXER_RUNNER_MODE_DEFAULT = "native";
 
   public CliMiddleManager()
   {
@@ -125,18 +125,18 @@ public class CliMiddleManager extends ServerRunnable
             JsonConfigProvider.bind(binder, "druid.indexer.task", TaskConfig.class);
             JsonConfigProvider.bind(binder, "druid.worker", WorkerConfig.class);
 
-            final MapBinder<String, TaskRunner> biddy = PolyBind.optionBinder(
-                    binder,
-                    Key.get(TaskRunner.class)
-            );
-            biddy.addBinding(INDEXER_RUNNER_MODE_DEFAULT).to(ForkingTaskRunner.class).in(LazySingleton.class);
-
             PolyBind.createChoice(
                     binder,
                     INDEXER_RUNNER_MODE,
                     Key.get(TaskRunner.class),
                     Key.get(ForkingTaskRunner.class)
             );
+            final MapBinder<String, TaskRunner> biddy = PolyBind.optionBinder(
+                    binder,
+                    Key.get(TaskRunner.class)
+            );
+            biddy.addBinding(INDEXER_RUNNER_MODE_DEFAULT).to(ForkingTaskRunner.class);
+            binder.bind(ForkingTaskRunner.class).in(LazySingleton.class);
 
             binder.bind(IndexingServiceClient.class).to(HttpIndexingServiceClient.class).in(LazySingleton.class);
             binder.bind(new TypeLiteral<IndexTaskClientFactory<ParallelIndexSupervisorTaskClient>>() {})
