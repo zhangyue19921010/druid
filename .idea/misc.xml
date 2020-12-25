@@ -38,6 +38,8 @@
     <option name="originalFiles">
       <list>
         <option value="$PROJECT_DIR$/pom.xml" />
+        <option value="$PROJECT_DIR$/extensions-core/druid-kubernetes-middlemanager-extensions/pom.xml" />
+        <option value="$PROJECT_DIR$/extensions-core/kubernetes-middlemanager-extensions/pom.xml" />
       </list>
     </option>
   </component>

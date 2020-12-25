@@ -13,4 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-org.apache.druid.k8s.discovery.K8sDiscoveryModule
+org.apache.druid.k8s.middlemanager.K8sMiddleManagerModule

@@ -19,5 +19,6 @@
 
 package org.apache.druid.k8s.middlemanager;
 
-public class K8sMiddleManagerConfig {
+public class K8sMiddleManagerConfig
+{
 }
