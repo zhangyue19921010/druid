@@ -135,7 +135,7 @@ public class CliMiddleManager extends ServerRunnable
                     binder,
                     Key.get(TaskRunner.class)
             );
-            biddy.addBinding(INDEXER_RUNNER_MODE_DEFAULT).to(ForkingTaskRunner.class);
+            biddy.addBinding(INDEXER_RUNNER_MODE_DEFAULT).to(ForkingTaskRunner.class).in(LazySingleton.class);
             binder.bind(ForkingTaskRunner.class).in(LazySingleton.class);
 
             binder.bind(IndexingServiceClient.class).to(HttpIndexingServiceClient.class).in(LazySingleton.class);
