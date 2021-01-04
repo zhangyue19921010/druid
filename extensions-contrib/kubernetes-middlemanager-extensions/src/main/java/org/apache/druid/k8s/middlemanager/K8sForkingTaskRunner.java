@@ -25,8 +25,8 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.google.common.io.ByteSink;
@@ -38,6 +38,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.inject.Inject;
+import io.kubernetes.client.custom.Quantity;
+import io.kubernetes.client.openapi.models.V1Pod;
 import org.apache.druid.guice.annotations.Self;
 import org.apache.druid.indexer.RunnerTaskState;
 import org.apache.druid.indexer.TaskLocation;
@@ -54,13 +56,13 @@ import org.apache.druid.indexing.overlord.config.ForkingTaskRunnerConfig;
 import org.apache.druid.indexing.worker.config.WorkerConfig;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.FileUtils;
-import org.apache.druid.java.util.common.IOE;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.io.Closer;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.emitter.EmittingLogger;
+import org.apache.druid.k8s.middlemanager.common.K8sApiClient;
 import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.log.StartupLoggingConfig;
@@ -97,6 +99,9 @@ public class K8sForkingTaskRunner
 {
   private static final EmittingLogger LOGGER = new EmittingLogger(K8sForkingTaskRunner.class);
   private static final String CHILD_PROPERTY_PREFIX = "druid.indexer.fork.property.";
+  private static final String DRUID_INDEXER_NAMESPACE = "druid.indexer.namesspace";
+  private static final String DRUID_INDEXER_IMAGE = "druid.indexer.image";
+  private static final String LABLE_KEY = "druid.ingest.task.id";
   private final ForkingTaskRunnerConfig config;
   private final Properties props;
   private final TaskLogPusher taskLogPusher;
@@ -104,8 +109,11 @@ public class K8sForkingTaskRunner
   private final ListeningExecutorService exec;
   private final PortFinder portFinder;
   private final StartupLoggingConfig startupLoggingConfig;
+  private final K8sApiClient k8sApiClient;
 
   private volatile boolean stopping = false;
+  private final String nameSpace;
+  private final String image;
 
   @Inject
   public K8sForkingTaskRunner(
@@ -116,7 +124,8 @@ public class K8sForkingTaskRunner
       TaskLogPusher taskLogPusher,
       ObjectMapper jsonMapper,
       @Self DruidNode node,
-      StartupLoggingConfig startupLoggingConfig
+      StartupLoggingConfig startupLoggingConfig,
+      K8sApiClient k8sApiClient
   )
   {
     super(jsonMapper, taskConfig);
@@ -129,6 +138,10 @@ public class K8sForkingTaskRunner
     this.exec = MoreExecutors.listeningDecorator(
         Execs.multiThreaded(workerConfig.getCapacity(), "forking-task-runner-%d")
     );
+    this.k8sApiClient = k8sApiClient;
+    this.nameSpace = props.getProperty(DRUID_INDEXER_NAMESPACE, "default");
+    this.image = props.getProperty(DRUID_INDEXER_IMAGE);
+    assert image != null;
   }
 
   @Override
@@ -149,7 +162,8 @@ public class K8sForkingTaskRunner
                   final File attemptDir = new File(taskDir, attemptUUID);
 
                   final K8sProcessHolder processHolder;
-                  final String childHost = node.getHost();
+                  // POD_IP is defined in env when create peon pod.
+                  final String childHost = "$POD_IP";
                   int childPort = -1;
                   int tlsChildPort = -1;
 
@@ -161,14 +175,11 @@ public class K8sForkingTaskRunner
                     tlsChildPort = portFinder.findUnusedPort();
                   }
 
-                  final TaskLocation taskLocation = TaskLocation.create(childHost, childPort, tlsChildPort);
+                  TaskLocation taskLocation;
 
                   try {
                     final Closer closer = Closer.create();
                     try {
-                      if (!attemptDir.mkdirs()) {
-                        throw new IOE("Could not create directories: %s", attemptDir);
-                      }
 
                       final File taskFile = new File(taskDir, "task.json");
                       final File statusFile = new File(attemptDir, "status.json");
@@ -345,13 +356,29 @@ public class K8sForkingTaskRunner
                           command.add("true");
                         }
 
-                        if (!taskFile.exists()) {
-                          jsonMapper.writeValue(taskFile, task);
+                        String labels = LABLE_KEY + ": " + task.getId();
+                        if (!k8sApiClient.configMapIsExist(nameSpace, labels)) {
+                          String taskString = jsonMapper.writeValueAsString(task);
+                          k8sApiClient.createConfigMap(nameSpace, task.getId(), ImmutableMap.of(LABLE_KEY, task.getId()), ImmutableMap.of("task.json", taskString));
                         }
 
                         LOGGER.info("Running command: %s", getMaskedCommand(startupLoggingConfig.getMaskProperties(), command));
-                        taskWorkItem.processHolder = new K8sProcessHolder(
-                          new ProcessBuilder(ImmutableList.copyOf(command)).redirectErrorStream(true).start(),
+
+                        V1Pod peonPod = k8sApiClient.createPod(task.getId(),
+                                image,
+                                nameSpace,
+                                ImmutableMap.of(LABLE_KEY, task.getId()),
+                                ImmutableMap.of("cpu", Quantity.fromString("1"), "memory", Quantity.fromString("2G")),
+                                taskDir,
+                                command,
+                                childPort,
+                                tlsChildPort);
+
+                        k8sApiClient.waitForPodCreate(peonPod, labels);
+
+                        taskLocation = TaskLocation.create(peonPod.getStatus().getPodIP(), childPort, tlsChildPort);
+
+                        taskWorkItem.processHolder = new K8sProcessHolder(peonPod,
                           logFile,
                           taskLocation.getHost(),
                           taskLocation.getPort(),
@@ -379,10 +406,12 @@ public class K8sForkingTaskRunner
                       Thread.currentThread().setName(StringUtils.format("%s-[%s]", priorThreadName, task.getId()));
 
                       try (final OutputStream toLogfile = logSink.openStream()) {
-                        ByteStreams.copy(processHolder.process.getInputStream(), toLogfile);
-                        final int statusCode = processHolder.process.waitFor();
-                        LOGGER.info("Process exited with status[%d] for task: %s", statusCode, task.getId());
-                        if (statusCode == 0) {
+                        ByteStreams.copy(processHolder.getInputStream(), toLogfile);
+
+                        // wait for pod status to complete.
+                        final String status = processHolder.waitForFinished();
+                        LOGGER.info("Process exited with status[%s] for task: %s", status, task.getId());
+                        if (status.equalsIgnoreCase("Failed")) {
                           runFailed = false;
                         }
                       }
@@ -423,7 +452,8 @@ public class K8sForkingTaskRunner
                       synchronized (tasks) {
                         final K8sForkingTaskRunnerWorkItem taskWorkItem = tasks.remove(task.getId());
                         if (taskWorkItem != null && taskWorkItem.processHolder != null) {
-                          taskWorkItem.processHolder.process.destroy();
+                          // delete finished pod
+                          taskWorkItem.processHolder.deletePod();
                         }
                         if (!stopping) {
                           saveRunningTasks();
@@ -573,7 +603,7 @@ public class K8sForkingTaskRunner
     } else {
       if (workItem.processHolder == null) {
         return RunnerTaskState.PENDING;
-      } else if (workItem.processHolder.process.isAlive()) {
+      } else if (workItem.processHolder.getPodStatus().equalsIgnoreCase("Running")) {
         return RunnerTaskState.RUNNING;
       } else {
         return RunnerTaskState.NONE;
@@ -629,11 +659,11 @@ public class K8sForkingTaskRunner
       // Will trigger normal failure mechanisms due to process exit
       LOGGER.info("Closing output stream to task[%s].", taskInfo.getTask().getId());
       try {
-        taskInfo.processHolder.process.getOutputStream().close();
+        taskInfo.processHolder.getInputStream().close();
       }
       catch (Exception e) {
         LOGGER.warn(e, "Failed to close stdout to task[%s]. Destroying task.", taskInfo.getTask().getId());
-        taskInfo.processHolder.process.destroy();
+        taskInfo.processHolder.deletePod();
       }
     }
   }
@@ -732,27 +762,48 @@ public class K8sForkingTaskRunner
     }
   }
 
-  private static class K8sProcessHolder
+  private class K8sProcessHolder
   {
-    private final Process process;
+    private final V1Pod peonPod;
     private final File logFile;
     private final String host;
     private final int port;
     private final int tlsPort;
+    private final InputStream is;
 
-    private K8sProcessHolder(Process process, File logFile, String host, int port, int tlsPort)
+    private K8sProcessHolder(V1Pod peonPod, File logFile, String host, int port, int tlsPort)
     {
-      this.process = process;
+      this.peonPod = peonPod;
       this.logFile = logFile;
       this.host = host;
       this.port = port;
       this.tlsPort = tlsPort;
+      this.is = k8sApiClient.getPodLogs(peonPod);
     }
 
     private void registerWithCloser(Closer closer)
     {
-      closer.register(process.getInputStream());
-      closer.register(process.getOutputStream());
+      closer.register(is);
+    }
+
+    private InputStream getInputStream()
+    {
+      return is;
+    }
+
+    private String waitForFinished()
+    {
+      return k8sApiClient.waitForPodFinished(peonPod);
+    }
+
+    private void deletePod()
+    {
+      k8sApiClient.deletePod(peonPod);
+    }
+
+    private String getPodStatus()
+    {
+      return k8sApiClient.getPodStatus(peonPod);
     }
   }
 }
