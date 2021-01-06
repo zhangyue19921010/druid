@@ -25,8 +25,8 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.google.common.io.ByteSink;
@@ -140,7 +140,7 @@ public class K8sForkingTaskRunner
     );
     this.k8sApiClient = k8sApiClient;
     this.nameSpace = props.getProperty(DRUID_INDEXER_NAMESPACE, "default");
-    this.image = props.getProperty(DRUID_INDEXER_IMAGE);
+    this.image = props.getProperty(DRUID_INDEXER_IMAGE, "druid/cluster:v1");
     assert image != null;
   }
 
@@ -185,9 +185,17 @@ public class K8sForkingTaskRunner
                       final File statusFile = new File(attemptDir, "status.json");
                       final File logFile = new File(taskDir, "log");
                       final File reportsFile = new File(attemptDir, "report.json");
-
                       // time to adjust process holders
                       synchronized (tasks) {
+                        final String label_value = StringUtils.toLowerCase(
+                                StringUtils.replace(
+                                        StringUtils.replace(
+                                                StringUtils.replace(
+                                                        task.getId(),
+                                                        "_", "-"),
+                                                ":", "-"),
+                                        ".", "-"));
+
                         final K8sForkingTaskRunnerWorkItem taskWorkItem = tasks.get(task.getId());
 
                         if (taskWorkItem == null) {
@@ -356,23 +364,24 @@ public class K8sForkingTaskRunner
                           command.add("true");
                         }
 
-                        String labels = LABLE_KEY + ": " + task.getId();
+                        String labels = LABLE_KEY + "=" + label_value;
                         if (!k8sApiClient.configMapIsExist(nameSpace, labels)) {
                           String taskString = jsonMapper.writeValueAsString(task);
-                          k8sApiClient.createConfigMap(nameSpace, task.getId(), ImmutableMap.of(LABLE_KEY, task.getId()), ImmutableMap.of("task.json", taskString));
+                          k8sApiClient.createConfigMap(nameSpace, label_value, ImmutableMap.of(LABLE_KEY, label_value), ImmutableMap.of("task.json", taskString));
                         }
 
                         LOGGER.info("Running command: %s", getMaskedCommand(startupLoggingConfig.getMaskProperties(), command));
 
-                        V1Pod peonPod = k8sApiClient.createPod(task.getId(),
+                        V1Pod peonPod = k8sApiClient.createPod(label_value,
                                 image,
                                 nameSpace,
-                                ImmutableMap.of(LABLE_KEY, task.getId()),
+                                ImmutableMap.of(LABLE_KEY, label_value),
                                 ImmutableMap.of("cpu", Quantity.fromString("1"), "memory", Quantity.fromString("2G")),
                                 taskDir,
                                 command,
                                 childPort,
                                 tlsChildPort);
+                        LOGGER.info("PeonPod createtd %s/%s", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
 
                         k8sApiClient.waitForPodCreate(peonPod, labels);
 
