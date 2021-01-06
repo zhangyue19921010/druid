@@ -34,10 +34,10 @@ import java.util.Map;
 public interface K8sApiClient
 {
   void patchPod(String podName, String namespace, String jsonPatchStr);
-  V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort);
+  V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tmpLoc);
   V1ConfigMap createConfigMap(String namespace, String configmapName, Map<String, String> labels, Map<String, String> data);
   Boolean configMapIsExist(String namespace, String labels);
-  void waitForPodCreate(V1Pod peonPod, String labelSelector);
+  void waitForPodRunning(V1Pod peonPod, String labelSelector);
   InputStream getPodLogs(V1Pod peonPod);
   String waitForPodFinished(V1Pod peonPod);
   String getPodStatus(V1Pod peonPod);

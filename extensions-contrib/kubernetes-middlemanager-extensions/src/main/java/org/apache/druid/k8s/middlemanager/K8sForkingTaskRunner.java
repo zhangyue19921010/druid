@@ -158,12 +158,14 @@ public class K8sForkingTaskRunner
                 public TaskStatus call()
                 {
                   final String attemptUUID = UUID.randomUUID().toString();
-                  final File taskDir = taskConfig.getTaskDir(task.getId());
+                  final File taskDirOri = taskConfig.getTaskDir(task.getId());
+                  final File taskDir = new File("/opt/apache-druid-0.21.0-SNAPSHOT/var/druid/task/index_parallel_inline_data1_mbgbgmjp_2021-01-06T03:13:20.583Z");
                   final File attemptDir = new File(taskDir, attemptUUID);
 
                   final K8sProcessHolder processHolder;
                   // POD_IP is defined in env when create peon pod.
                   final String childHost = "$POD_IP";
+                  final String tmpfileLoc = "/tmp";
                   int childPort = -1;
                   int tlsChildPort = -1;
 
@@ -183,7 +185,9 @@ public class K8sForkingTaskRunner
 
                       final File taskFile = new File(taskDir, "task.json");
                       final File statusFile = new File(attemptDir, "status.json");
-                      final File logFile = new File(taskDir, "log");
+
+                      final File logFileOri = new File(taskDir, "log");
+                      final File logFile = new File("/home/ec2-user/app/task.log");
                       final File reportsFile = new File(attemptDir, "report.json");
                       // time to adjust process holders
                       synchronized (tasks) {
@@ -380,10 +384,11 @@ public class K8sForkingTaskRunner
                                 taskDir,
                                 command,
                                 childPort,
-                                tlsChildPort);
+                                tlsChildPort,
+                                tmpfileLoc);
                         LOGGER.info("PeonPod createtd %s/%s", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
 
-                        k8sApiClient.waitForPodCreate(peonPod, labels);
+                        k8sApiClient.waitForPodRunning(peonPod, labels);
 
                         taskLocation = TaskLocation.create(peonPod.getStatus().getPodIP(), childPort, tlsChildPort);
 

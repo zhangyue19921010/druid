@@ -20,6 +20,7 @@
 package org.apache.druid.k8s.middlemanager.common;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import io.kubernetes.client.PodLogs;
 import io.kubernetes.client.custom.Quantity;
@@ -40,12 +41,14 @@ import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodBuilder;
 import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1VolumeMount;
+import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.RE;
 import org.apache.druid.java.util.common.logger.Logger;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +63,7 @@ public class DefaultK8sApiClient implements K8sApiClient
   private final ApiClient realK8sClient;
   private final CoreV1Api coreV1Api;
   private final ObjectMapper jsonMapper;
-  private GenericKubernetesApi<V1Pod, V1PodList> podClient;
+  private final GenericKubernetesApi<V1Pod, V1PodList> podClient;
 
   @Inject
   public DefaultK8sApiClient(ApiClient realK8sClient, @Json ObjectMapper jsonMapper)
@@ -90,11 +93,13 @@ public class DefaultK8sApiClient implements K8sApiClient
    * @return
    */
   @Override
-  public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort)
+  public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc)
   {
     try {
       // remove 'java' in args
+      final String volumnName = "task-json-vol-tmp";
       args.remove(0);
+      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello; sleep 1;done";
 
       V1EnvVar podIpEnv = new V1EnvVarBuilder()
               .withName("POD_IP")
@@ -102,6 +107,19 @@ public class DefaultK8sApiClient implements K8sApiClient
               .withFieldRef(new V1ObjectFieldSelector().fieldPath("status.podIP"))
               .endValueFrom()
               .build();
+
+      V1EnvVar task_id = new V1EnvVarBuilder()
+              .withName("TASK_ID")
+              .withNewValue(taskID)
+              .build();
+
+      V1EnvVar task_dir = new V1EnvVarBuilder()
+              .withName("TASK_DIR")
+              .withNewValue(taskDir.getAbsolutePath()).build();
+
+      V1EnvVar task_json_tmp_location = new V1EnvVarBuilder()
+              .withName("TASK_JSON_TMP_LOCATION")
+              .withNewValue(tempLoc + "/task.json").build();
 
       V1Pod pod = new V1PodBuilder()
               .withNewMetadata()
@@ -111,25 +129,25 @@ public class DefaultK8sApiClient implements K8sApiClient
               .endMetadata()
               .withNewSpec()
               .addNewVolume()
-              .withNewName("task-json-vol")
+              .withNewName(volumnName)
               .withConfigMap(new V1ConfigMapVolumeSource().defaultMode(420).name(taskID))
               .endVolume()
               .addNewContainer()
               .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
-              .addNewCommand("java")
-              .withArgs(args)
+              .withCommand("/bin/sh", "-c")
+              .withArgs(prepareTaskFiles)
               .withName("peon")
               .withImage(image)
               .withImagePullPolicy("IfNotPresent")
-              .withVolumeMounts(new V1VolumeMount().name("task-json-vol").mountPath(taskDir.getAbsolutePath()))
-              .withEnv(podIpEnv)
+              .withVolumeMounts(new V1VolumeMount().name(volumnName).mountPath(tempLoc))
+              .withEnv(ImmutableList.of(podIpEnv, task_id, task_dir, task_json_tmp_location))
               .withNewResources()
               .withLimits(resourceLimit)
               .endResources()
               .endContainer()
               .endSpec()
               .build();
-      V1Pod peonPod = podClient.create(pod).throwsApiException().getObject();
+      V1Pod peonPod = coreV1Api.createNamespacedPod(namespace, pod, null, null, null);
       return peonPod;
     }
     catch (ApiException ex) {
@@ -174,37 +192,42 @@ public class DefaultK8sApiClient implements K8sApiClient
   }
 
   @Override
-  public void waitForPodCreate(V1Pod peonPod, String labelSelector)
+  public void waitForPodRunning(V1Pod peonPod, String labelSelector)
   {
     String namespace = peonPod.getMetadata().getNamespace();
     String podName = peonPod.getMetadata().getName();
     try {
       V1PodList v1PodList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, labelSelector, null, null, null, null);
-      while (v1PodList.getItems().isEmpty()) {
-        LOGGER.info("Still waitting for pod created [%s/%s]", namespace, podName);
+      while (v1PodList.getItems().isEmpty() || !getPodStatus(v1PodList.getItems().get(0)).equalsIgnoreCase("Running")) {
+        LOGGER.info("Still waitting for pod Running [%s/%s]", namespace, podName);
         Thread.sleep(3 * 1000);
         v1PodList = coreV1Api.listNamespacedPod(peonPod.getMetadata().getNamespace(), null, null, null, null, labelSelector, null, null, null, null);
       }
-      LOGGER.info("Peon Pod created [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
+      LOGGER.info("Peon Pod Running : %s", Yaml.dump(peonPod));
     }
     catch (ApiException ex) {
-      LOGGER.warn(ex, "Exception to wait for pod creatation[%s/%s], code[%d], error[%s].", namespace, labelSelector, ex.getCode(), ex.getResponseBody());
+      LOGGER.warn(ex, "Exception to wait for pod Running[%s/%s], code[%d], error[%s].", namespace, labelSelector, ex.getCode(), ex.getResponseBody());
     }
     catch (InterruptedException ex) {
-      LOGGER.warn(ex, "InterruptedException when wait for pod created [%s/%s]", namespace, podName);
+      LOGGER.warn(ex, "InterruptedException when wait for pod Running [%s/%s]", namespace, podName);
     }
   }
 
   @Override
   public InputStream getPodLogs(V1Pod peonPod)
   {
+    String namespace = peonPod.getMetadata().getNamespace();
+    String podName = peonPod.getMetadata().getName();
     PodLogs logs = new PodLogs(realK8sClient);
     InputStream is = null;
     try {
       is = logs.streamNamespacedPodLog(peonPod);
     }
-    catch (Exception e) {
-      LOGGER.warn(e, "Error when get pod logs.");
+    catch (ApiException ex) {
+      LOGGER.warn(ex, "Exception to get pod logs [%s/%s], code[%d], error[%s].", namespace, podName, ex.getCode(), ex.getResponseBody());
+    }
+    catch (IOException ex) {
+      LOGGER.warn(ex, "Error when get pod logs [%s/%s].", namespace, podName);
     }
     return is;
   }
@@ -213,13 +236,20 @@ public class DefaultK8sApiClient implements K8sApiClient
   public String waitForPodFinished(V1Pod peonPod)
   {
     String phase = getPodStatus(peonPod);
-    while (true) {
-      switch (phase) {
-        case "Succeeded": return phase;
-        case "Failed": return phase;
-        default: phase = getPodStatus(peonPod);
+    String namespace = peonPod.getMetadata().getNamespace();
+    String name = peonPod.getMetadata().getName();
+
+    while (!phase.equalsIgnoreCase("Failed") && !phase.equalsIgnoreCase("Succeeded")) {
+      try {
+        LOGGER.info("Still wait for peon pod finished [%s/%s] current status is [%s]", namespace, name, phase);
+        Thread.sleep(3 * 1000);
+        phase = getPodStatus(peonPod);
+      }
+      catch (InterruptedException ex) {
+        LOGGER.warn(ex, "Exception when wait for pod finished [%s/%s].", namespace, name);
       }
     }
+    return phase;
   }
   @Override
   public String getPodStatus(V1Pod peonPod)
@@ -232,6 +262,6 @@ public class DefaultK8sApiClient implements K8sApiClient
   public void deletePod(V1Pod peonPod)
   {
     V1ObjectMeta mt = peonPod.getMetadata();
-    podClient.delete(mt.getNamespace(), mt.getName()).getObject();
+    LOGGER.info("Peon Pod deleted : [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
   }
 }
