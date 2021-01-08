@@ -22,6 +22,7 @@ package org.apache.druid.k8s.middlemanager.common;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
+import io.kubernetes.client.Copy;
 import io.kubernetes.client.PodLogs;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.custom.V1Patch;
@@ -93,13 +94,14 @@ public class DefaultK8sApiClient implements K8sApiClient
    * @return
    */
   @Override
-  public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc)
+  public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc, String peonPodRestartPolicy)
   {
     try {
       // remove 'java' in args
       final String volumnName = "task-json-vol-tmp";
       args.remove(0);
-      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello; sleep 1;done";
+//      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello world; sleep 5;done";
+      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;echo hello-world";
 
       V1EnvVar podIpEnv = new V1EnvVarBuilder()
               .withName("POD_IP")
@@ -132,6 +134,7 @@ public class DefaultK8sApiClient implements K8sApiClient
               .withNewName(volumnName)
               .withConfigMap(new V1ConfigMapVolumeSource().defaultMode(420).name(taskID))
               .endVolume()
+              .withNewRestartPolicy(peonPodRestartPolicy)
               .addNewContainer()
               .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
               .withCommand("/bin/sh", "-c")
@@ -191,6 +194,12 @@ public class DefaultK8sApiClient implements K8sApiClient
     return false;
   }
 
+  /**
+   * There are five status for pod, including "Pending", "Running", "Succeeded", "Failed", "Unknown"
+   * Just care about Pending status here.
+   * @param peonPod
+   * @param labelSelector
+   */
   @Override
   public void waitForPodRunning(V1Pod peonPod, String labelSelector)
   {
@@ -198,7 +207,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     String podName = peonPod.getMetadata().getName();
     try {
       V1PodList v1PodList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, labelSelector, null, null, null, null);
-      while (v1PodList.getItems().isEmpty() || !getPodStatus(v1PodList.getItems().get(0)).equalsIgnoreCase("Running")) {
+      while (v1PodList.getItems().isEmpty() || getPodStatus(v1PodList.getItems().get(0)).equalsIgnoreCase("Pending")) {
         LOGGER.info("Still waitting for pod Running [%s/%s]", namespace, podName);
         Thread.sleep(3 * 1000);
         v1PodList = coreV1Api.listNamespacedPod(peonPod.getMetadata().getNamespace(), null, null, null, null, labelSelector, null, null, null, null);
@@ -251,6 +260,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     }
     return phase;
   }
+
   @Override
   public String getPodStatus(V1Pod peonPod)
   {
@@ -262,6 +272,25 @@ public class DefaultK8sApiClient implements K8sApiClient
   public void deletePod(V1Pod peonPod)
   {
     V1ObjectMeta mt = peonPod.getMetadata();
+//    podClient.delete(mt.getNamespace(), mt.getName()).getObject();
     LOGGER.info("Peon Pod deleted : [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
+  }
+
+  public InputStream copyFileFromPod(V1Pod peonPod, String srcPath)
+  {
+    String namespace = peonPod.getMetadata().getNamespace();
+    String name = peonPod.getMetadata().getName();
+    String containerName = peonPod.getSpec().getContainers().get(0).getName();
+    InputStream is = null;
+    try {
+      Copy copyRoot = new Copy(realK8sClient);
+
+      // String namespace, String pod, String container, String srcPath
+      is = copyRoot.copyFileFromPod(namespace, containerName, srcPath);
+    }
+    catch (ApiException | IOException ex) {
+      LOGGER.warn(ex, "Exception get file from pod[%s/%s].", namespace, name);
+    }
+    return is;
   }
 }

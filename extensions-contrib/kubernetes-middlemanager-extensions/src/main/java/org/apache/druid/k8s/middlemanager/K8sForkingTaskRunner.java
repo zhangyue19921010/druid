@@ -186,8 +186,8 @@ public class K8sForkingTaskRunner
                       final File taskFile = new File(taskDir, "task.json");
                       final File statusFile = new File(attemptDir, "status.json");
 
-                      final File logFileOri = new File(taskDir, "log");
-                      final File logFile = new File("/home/ec2-user/app/task.log");
+                      final File logFile = new File(taskDir, "log");
+                      final File forkLogFile = new File("/home/ec2-user/app/task.log");
                       final File reportsFile = new File(attemptDir, "report.json");
                       // time to adjust process holders
                       synchronized (tasks) {
@@ -385,7 +385,8 @@ public class K8sForkingTaskRunner
                                 command,
                                 childPort,
                                 tlsChildPort,
-                                tmpfileLoc);
+                                tmpfileLoc,
+                                "Never");
                         LOGGER.info("PeonPod createtd %s/%s", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
 
                         k8sApiClient.waitForPodRunning(peonPod, labels);
@@ -393,7 +394,7 @@ public class K8sForkingTaskRunner
                         taskLocation = TaskLocation.create(peonPod.getStatus().getPodIP(), childPort, tlsChildPort);
 
                         taskWorkItem.processHolder = new K8sProcessHolder(peonPod,
-                          logFile,
+                          forkLogFile,
                           taskLocation.getHost(),
                           taskLocation.getPort(),
                           taskLocation.getTlsPort()
@@ -410,10 +411,10 @@ public class K8sForkingTaskRunner
                           TaskStatus.running(task.getId())
                       );
 
-                      LOGGER.info("Logging task %s output to: %s", task.getId(), logFile);
+                      LOGGER.info("Logging task %s output to: %s", task.getId(), forkLogFile);
                       boolean runFailed = true;
 
-                      final ByteSink logSink = Files.asByteSink(logFile, FileWriteMode.APPEND);
+                      final ByteSink logSink = Files.asByteSink(forkLogFile, FileWriteMode.APPEND);
 
                       // This will block for a while. So we append the thread information with more details
                       final String priorThreadName = Thread.currentThread().getName();
@@ -422,17 +423,17 @@ public class K8sForkingTaskRunner
                       try (final OutputStream toLogfile = logSink.openStream()) {
                         ByteStreams.copy(processHolder.getInputStream(), toLogfile);
 
-                        // wait for pod status to complete.
+                        // wait for pod finished(Succeeded or Failed)
                         final String status = processHolder.waitForFinished();
                         LOGGER.info("Process exited with status[%s] for task: %s", status, task.getId());
-                        if (status.equalsIgnoreCase("Failed")) {
+                        if (status.equalsIgnoreCase("Succeeded")) {
                           runFailed = false;
                         }
                       }
                       finally {
                         Thread.currentThread().setName(priorThreadName);
                         // Upload task logs
-                        taskLogPusher.pushTaskLog(task.getId(), logFile);
+                        taskLogPusher.pushTaskLog(task.getId(), forkLogFile);
                         if (reportsFile.exists()) {
                           taskLogPusher.pushTaskReports(task.getId(), reportsFile);
                         }
@@ -441,11 +442,13 @@ public class K8sForkingTaskRunner
                       TaskStatus status;
                       if (!runFailed) {
                         // Process exited successfully
-                        status = jsonMapper.readValue(statusFile, TaskStatus.class);
+//                        status = TaskStatus.success(task.getId(), taskLocation);
+                        status = TaskStatus.success(task.getId());
                       } else {
                         // Process exited unsuccessfully
                         status = TaskStatus.failure(task.getId());
                       }
+                      LOGGER.info("Current Task Status [%s]", status);
 
                       TaskRunnerUtils.notifyStatusChanged(listeners, task.getId(), status);
                       return status;
