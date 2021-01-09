@@ -46,6 +46,7 @@ import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.RE;
+import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 
 import java.io.File;
@@ -99,9 +100,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     try {
       // remove 'java' in args
       final String volumnName = "task-json-vol-tmp";
-      args.remove(0);
-//      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello world; sleep 5;done";
-      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;echo hello-world";
+      String comands = buildCommands(args);
 
       V1EnvVar podIpEnv = new V1EnvVarBuilder()
               .withName("POD_IP")
@@ -138,7 +137,7 @@ public class DefaultK8sApiClient implements K8sApiClient
               .addNewContainer()
               .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
               .withCommand("/bin/sh", "-c")
-              .withArgs(prepareTaskFiles)
+              .withArgs(comands)
               .withName("peon")
               .withImage(image)
               .withImagePullPolicy("IfNotPresent")
@@ -157,6 +156,17 @@ public class DefaultK8sApiClient implements K8sApiClient
       LOGGER.warn(ex, "Failed to create pod[%s/%s], code[%d], error[%s].", namespace, taskID, ex.getCode(), ex.getResponseBody());
     }
     return null;
+  }
+
+  private String buildCommands(List<String> args)
+  {
+//      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello world; sleep 5;done";
+    String ori = args.toString();
+    String remove = ori.substring(1, ori.length() - 1);
+    String javaCommands = StringUtils.replace(remove, ",", "");
+    String javaCommandsTmp = StringUtils.replace(javaCommands, "/home/ec2-user/app/apache-druid-0.21.0-SNAPSHOT/", "/opt/druid/");
+    final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;";
+    return prepareTaskFiles + javaCommandsTmp;
   }
 
   @Override
