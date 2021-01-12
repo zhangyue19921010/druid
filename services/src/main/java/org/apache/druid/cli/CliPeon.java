@@ -181,7 +181,7 @@ public class CliPeon extends GuiceRunnable
   {
     this.properties = properties;
     isZkEnabled = ZkEnablementConfig.isEnabled(properties);
-    isRunningOnK8s = Boolean.parseBoolean(properties.getProperty("druid.indexer.runner.mode", "false"));
+    isRunningOnK8s = properties.getProperty("druid.indexer.runner.mode", "local").equalsIgnoreCase("k8s");
   }
 
   @Override
