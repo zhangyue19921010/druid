@@ -58,7 +58,6 @@ public class K8sMiddleManagerModule implements DruidModule
     );
     biddy.addBinding(INDEXER_RUNNER_MODE_K8S).to(K8sForkingTaskRunner.class).in(LazySingleton.class);
     binder.bind(K8sForkingTaskRunner.class).in(LazySingleton.class);
-    configureTaskLogs(binder);
 
     bindK8sClient(binder);
   }
@@ -80,21 +79,6 @@ public class K8sMiddleManagerModule implements DruidModule
             )
             .in(LazySingleton.class);
     binder.bind(K8sApiClient.class).to(DefaultK8sApiClient.class).in(LazySingleton.class);
-  }
-
-  private void configureTaskLogs(Binder binder)
-  {
-    PolyBind.createChoice(binder, "druid.indexer.logs.type", Key.get(TaskLogs.class), Key.get(FileTaskLogs.class));
-    JsonConfigProvider.bind(binder, "druid.indexer.logs", FileTaskLogsConfig.class);
-
-    final MapBinder<String, TaskLogs> taskLogBinder = Binders.taskLogsBinder(binder);
-    taskLogBinder.addBinding("noop").to(NoopTaskLogs.class).in(LazySingleton.class);
-    taskLogBinder.addBinding("file").to(FileTaskLogs.class).in(LazySingleton.class);
-    binder.bind(NoopTaskLogs.class).in(LazySingleton.class);
-    binder.bind(FileTaskLogs.class).in(LazySingleton.class);
-
-    binder.bind(TaskLogPusher.class).to(TaskLogs.class);
-    binder.bind(TaskLogKiller.class).to(TaskLogs.class);
   }
 
   @Override

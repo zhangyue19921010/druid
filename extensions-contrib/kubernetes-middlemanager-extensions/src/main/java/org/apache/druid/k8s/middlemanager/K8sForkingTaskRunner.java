@@ -252,7 +252,7 @@ public class K8sForkingTaskRunner
                                 && !ForkingTaskRunnerConfig.JAVA_OPTS_PROPERTY.equals(propName)
                                 && !ForkingTaskRunnerConfig.JAVA_OPTS_ARRAY_PROPERTY.equals(propName)
                             ) {
-                              // remove druid-kubernetes-middlemanager-extensions in druid.extensions.loadList
+                              // remove druid-kubernetes-middlemanager-extensions in druid.extensions.loadList for peon pod
                               if (propName.contains("druid.extensions.loadList")) {
                                 String[] splits = StringUtils.replace(
                                         StringUtils.replace(
