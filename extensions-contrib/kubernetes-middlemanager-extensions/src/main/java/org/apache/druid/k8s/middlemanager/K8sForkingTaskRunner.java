@@ -158,8 +158,7 @@ public class K8sForkingTaskRunner
                 public TaskStatus call()
                 {
                   final String attemptUUID = UUID.randomUUID().toString();
-                  final File taskDirOri = taskConfig.getTaskDir(task.getId());
-                  final File taskDir = new File("/opt/apache-druid-0.21.0-SNAPSHOT/var/druid/task/" + task.getId());
+                  final File taskDir = taskConfig.getTaskDir(task.getId());
                   final File attemptDir = new File(taskDir, attemptUUID);
 
                   final K8sProcessHolder processHolder;
@@ -187,7 +186,6 @@ public class K8sForkingTaskRunner
                       final File statusFile = new File(attemptDir, "status.json");
 
                       final File logFile = new File(taskDir, "log");
-                      final File forkLogFile = new File("/home/ec2-user/app/task.log");
                       final File reportsFile = new File(attemptDir, "report.json");
                       // time to adjust process holders
                       synchronized (tasks) {
@@ -344,6 +342,7 @@ public class K8sForkingTaskRunner
 
                         command.add(StringUtils.format("-Ddruid.host=%s", childHost));
                         command.add(StringUtils.format("-Ddruid.plaintextPort=%d", childPort));
+                        // don't support tlsPort for now
                         command.add(StringUtils.format("-Ddruid.tlsPort=%d", tlsChildPort));
 
                         // Let tasks know where they are running on.
@@ -416,7 +415,7 @@ public class K8sForkingTaskRunner
                         taskLocation = TaskLocation.create(peonPod.getStatus().getPodIP(), childPort, tlsChildPort);
 
                         taskWorkItem.processHolder = new K8sProcessHolder(peonPod,
-                          forkLogFile,
+                          logFile,
                           taskLocation.getHost(),
                           taskLocation.getPort(),
                           taskLocation.getTlsPort()
@@ -433,10 +432,10 @@ public class K8sForkingTaskRunner
                           TaskStatus.running(task.getId())
                       );
 
-                      LOGGER.info("Logging task %s output to: %s", task.getId(), forkLogFile);
+                      LOGGER.info("Logging task %s output to: %s", task.getId(), logFile);
                       boolean runFailed = true;
 
-                      final ByteSink logSink = Files.asByteSink(forkLogFile, FileWriteMode.APPEND);
+                      final ByteSink logSink = Files.asByteSink(logFile, FileWriteMode.APPEND);
 
                       // This will block for a while. So we append the thread information with more details
                       final String priorThreadName = Thread.currentThread().getName();
@@ -455,7 +454,7 @@ public class K8sForkingTaskRunner
                       finally {
                         Thread.currentThread().setName(priorThreadName);
                         // Upload task logs
-                        taskLogPusher.pushTaskLog(task.getId(), forkLogFile);
+                        taskLogPusher.pushTaskLog(task.getId(), logFile);
                         if (reportsFile.exists()) {
                           taskLogPusher.pushTaskReports(task.getId(), reportsFile);
                         }
@@ -464,8 +463,7 @@ public class K8sForkingTaskRunner
                       TaskStatus status;
                       if (!runFailed) {
                         // Process exited successfully
-//                        status = TaskStatus.success(task.getId(), taskLocation);
-                        status = TaskStatus.success(task.getId());
+                        status = TaskStatus.success(task.getId(), taskLocation);
                       } else {
                         // Process exited unsuccessfully
                         status = TaskStatus.failure(task.getId());

@@ -24,9 +24,7 @@ import com.google.inject.Binder;
 import com.google.inject.Key;
 import com.google.inject.multibindings.MapBinder;
 import io.kubernetes.client.openapi.ApiClient;
-import io.kubernetes.client.openapi.Configuration;
-import io.kubernetes.client.util.ClientBuilder;
-import io.kubernetes.client.util.KubeConfig;
+import io.kubernetes.client.util.Config;
 import org.apache.druid.guice.Binders;
 import org.apache.druid.guice.JsonConfigProvider;
 import org.apache.druid.guice.LazySingleton;
@@ -42,10 +40,7 @@ import org.apache.druid.tasklogs.TaskLogKiller;
 import org.apache.druid.tasklogs.TaskLogPusher;
 import org.apache.druid.tasklogs.TaskLogs;
 
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
@@ -76,10 +71,7 @@ public class K8sMiddleManagerModule implements DruidModule
                   try {
                     // Note: we can probably improve things here about figuring out how to find the K8S API server,
                     // HTTP client timeouts etc.
-                    InputStreamReader reader = new InputStreamReader(new FileInputStream("/home/ec2-user/kubeconfig"), StandardCharsets.UTF_8);
-                    ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(reader)).build();
-                    Configuration.setDefaultApiClient(client);
-                    return client;
+                    return Config.defaultClient();
                   }
                   catch (IOException ex) {
                     throw new RuntimeException("Failed to create K8s ApiClient instance", ex);

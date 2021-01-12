@@ -98,7 +98,6 @@ public class DefaultK8sApiClient implements K8sApiClient
   public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc, String peonPodRestartPolicy)
   {
     try {
-      // remove 'java' in args
       final String volumnName = "task-json-vol-tmp";
       String comands = buildCommands(args);
 
@@ -160,7 +159,6 @@ public class DefaultK8sApiClient implements K8sApiClient
 
   private String buildCommands(List<String> args)
   {
-//      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello world; sleep 5;done";
     for (int i = 0; i < args.size(); i++) {
       String value = args.get(i);
       args.set(i, StringUtils.replace(value, "\n", ""));
@@ -184,9 +182,8 @@ public class DefaultK8sApiClient implements K8sApiClient
 
     String javaCommands = builder.toString().substring(0, builder.toString().length() - 1);
 
-    String javaCommandsTmp = StringUtils.replace(javaCommands, "/home/ec2-user/app/apache-druid-0.21.0-SNAPSHOT/", "/opt/druid/");
-    final String prepareTaskFiles = "mkdir -p $TASK_DIR; mkdir -p $HOME/var/tmp; mkdir -p $HOME/var/druid/segments; mkdir -p $HOME/var/druid/indexing-logs; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
-    return prepareTaskFiles + javaCommandsTmp;
+    final String prepareTaskFiles = "mkdir -p $TASK_DIR; mkdir -p $HOME/var/tmp;; cp $TASK_JSON_TMP_LOCATION $TASK_DIR;";
+    return prepareTaskFiles + javaCommands;
   }
 
   @Override
