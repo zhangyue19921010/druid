@@ -161,11 +161,31 @@ public class DefaultK8sApiClient implements K8sApiClient
   private String buildCommands(List<String> args)
   {
 //      final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;while true; do echo hello world; sleep 5;done";
-    String ori = args.toString();
-    String remove = ori.substring(1, ori.length() - 1);
-    String javaCommands = StringUtils.replace(remove, ",", "");
+    for (int i = 0; i < args.size(); i++) {
+      String value = args.get(i);
+      args.set(i, StringUtils.replace(value, "\n", ""));
+      args.set(i, StringUtils.replace(value, "\r", ""));
+      args.set(i, StringUtils.replace(value, "\t", ""));
+      args.set(i, StringUtils.replace(value, "\"", "\\\""));
+      String[] splits = args.get(i).split("=");
+      if (splits.length > 1 && splits[1].contains(";")) {
+        args.set(i, splits[0] + "=" + "\"" + splits[1] + "\"");
+      }
+
+      if (splits.length > 1 && (splits[1].startsWith("[") || splits[1].startsWith("{"))) {
+        args.set(i, splits[0] + "=" + "\"" + splits[1] + "\"");
+      }
+    }
+
+    StringBuilder builder = new StringBuilder();
+    for (String arg : args) {
+      builder.append(arg).append(" ");
+    }
+
+    String javaCommands = builder.toString().substring(0, builder.toString().length() - 1);
+
     String javaCommandsTmp = StringUtils.replace(javaCommands, "/home/ec2-user/app/apache-druid-0.21.0-SNAPSHOT/", "/opt/druid/");
-    final String prepareTaskFiles = "mkdir -p $TASK_DIR;cp $TASK_JSON_TMP_LOCATION $TASK_DIR ;";
+    final String prepareTaskFiles = "mkdir -p $TASK_DIR; mkdir -p $HOME/var/tmp; mkdir -p $HOME/var/druid/segments; mkdir -p $HOME/var/druid/indexing-logs; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
     return prepareTaskFiles + javaCommandsTmp;
   }
 

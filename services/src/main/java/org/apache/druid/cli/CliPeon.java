@@ -158,6 +158,7 @@ public class CliPeon extends GuiceRunnable
   public String serverType = "indexer-executor";
 
   private boolean isZkEnabled = true;
+  private boolean isRunningOnK8s = false;
 
   /**
    * If set to "true", the peon will bind classes necessary for loading broadcast segments. This is used for
@@ -180,6 +181,7 @@ public class CliPeon extends GuiceRunnable
   {
     this.properties = properties;
     isZkEnabled = ZkEnablementConfig.isEnabled(properties);
+    isRunningOnK8s = Boolean.parseBoolean(properties.getProperty("druid.indexer.runner.mode", "false"));
   }
 
   @Override
@@ -214,11 +216,19 @@ public class CliPeon extends GuiceRunnable
 
             binder.bind(ExecutorLifecycle.class).in(ManageLifecycle.class);
             LifecycleModule.register(binder, ExecutorLifecycle.class);
-            binder.bind(ExecutorLifecycleConfig.class).toInstance(
-                new ExecutorLifecycleConfig()
-                    .setTaskFile(new File(taskLogPath))
-                    .setStatusFile(new File(taskStatusPath))
-            );
+
+            if (isRunningOnK8s) {
+              binder.bind(ExecutorLifecycleConfig.class).toInstance(
+                      new ExecutorLifecycleConfig()
+                              .setTaskFile(new File(taskLogPath))
+                              .setStatusFile(new File(taskStatusPath))
+                              .setParentStreamDefined(false));
+            } else {
+              binder.bind(ExecutorLifecycleConfig.class).toInstance(
+                      new ExecutorLifecycleConfig()
+                              .setTaskFile(new File(taskLogPath))
+                              .setStatusFile(new File(taskStatusPath)));
+            }
 
             binder.bind(TaskReportFileWriter.class)
                   .toInstance(new SingleFileTaskReportFileWriter(new File(taskReportPath)));

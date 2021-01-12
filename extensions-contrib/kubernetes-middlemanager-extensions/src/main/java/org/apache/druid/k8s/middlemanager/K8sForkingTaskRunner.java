@@ -159,7 +159,7 @@ public class K8sForkingTaskRunner
                 {
                   final String attemptUUID = UUID.randomUUID().toString();
                   final File taskDirOri = taskConfig.getTaskDir(task.getId());
-                  final File taskDir = new File("/opt/apache-druid-0.21.0-SNAPSHOT/var/druid/task/index_parallel_inline_data1_mbgbgmjp_2021-01-06T03:13:20.583Z");
+                  final File taskDir = new File("/opt/apache-druid-0.21.0-SNAPSHOT/var/druid/task/" + task.getId());
                   final File attemptDir = new File(taskDir, attemptUUID);
 
                   final K8sProcessHolder processHolder;
@@ -254,13 +254,35 @@ public class K8sForkingTaskRunner
                                 && !ForkingTaskRunnerConfig.JAVA_OPTS_PROPERTY.equals(propName)
                                 && !ForkingTaskRunnerConfig.JAVA_OPTS_ARRAY_PROPERTY.equals(propName)
                             ) {
-                              command.add(
-                                  StringUtils.format(
-                                  "-D%s=%s",
-                                  propName,
-                                  props.getProperty(propName)
-                                )
-                              );
+                              // remove druid-kubernetes-middlemanager-extensions in druid.extensions.loadList
+                              if (propName.contains("druid.extensions.loadList")) {
+                                String[] splits = StringUtils.replace(
+                                        StringUtils.replace(
+                                                props.getProperty(propName), "[", ""),
+                                        "]", "")
+                                        .split(",");
+                                ArrayList<String> loadList = new ArrayList<>();
+                                for (String extension : splits) {
+                                  if (!extension.contains("druid-kubernetes-middlemanager-extensions")) {
+                                    loadList.add(extension);
+                                  }
+                                }
+                                command.add(
+                                        StringUtils.format(
+                                                "-D%s=%s",
+                                                propName,
+                                                loadList
+                                        )
+                                );
+                              } else {
+                                command.add(
+                                        StringUtils.format(
+                                                "-D%s=%s",
+                                                propName,
+                                                props.getProperty(propName)
+                                        )
+                                );
+                              }
                             }
                           }
                         }
