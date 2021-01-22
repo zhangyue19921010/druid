@@ -17,11 +17,18 @@
 set -e
 
 if ($BUILD_DRUID_CLSUTER); then
+
+  DRUID_HOME_DIR=$(dirname "$PWD")
+
   sudo /usr/local/bin/minikube delete
-  echo "rm -rf $1/tmp"
-  sudo rm -rf $1/tmp
-  echo "rm -rf $1/druid-operator"
-  sudo rm -rf $1/druid-operator
+
+  echo "rm -rf $DRUID_HOME_DIR/tmp"
+  sudo rm -rf $DRUID_HOME_DIR/tmp
+
+  echo "rm -rf $DRUID_HOME_DIR/druid-operator"
+  sudo rm -rf $DRUID_HOME_DIR/druid-operator
+
   docker ps
+  ls -alt $DRUID_HOME_DIR
 fi
 
