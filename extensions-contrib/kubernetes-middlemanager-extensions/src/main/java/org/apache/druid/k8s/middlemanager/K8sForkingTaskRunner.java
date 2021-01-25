@@ -412,7 +412,7 @@ public class K8sForkingTaskRunner
 
                         k8sApiClient.waitForPodRunning(peonPod, labels);
 
-                        taskLocation = TaskLocation.create(peonPod.getStatus().getPodIP(), childPort, tlsChildPort);
+                        taskLocation = TaskLocation.create(k8sApiClient.getPod(peonPod).getStatus().getPodIP(), childPort, tlsChildPort);
 
                         taskWorkItem.processHolder = new K8sProcessHolder(peonPod,
                           logFile,

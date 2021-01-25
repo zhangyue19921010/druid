@@ -304,6 +304,14 @@ public class DefaultK8sApiClient implements K8sApiClient
   }
 
   @Override
+  public V1Pod getPod(V1Pod peonPod)
+  {
+    V1ObjectMeta mt = peonPod.getMetadata();
+    return podClient.get(mt.getNamespace(), mt.getName()).getObject();
+  }
+
+
+  @Override
   public void deletePod(V1Pod peonPod)
   {
     V1ObjectMeta mt = peonPod.getMetadata();

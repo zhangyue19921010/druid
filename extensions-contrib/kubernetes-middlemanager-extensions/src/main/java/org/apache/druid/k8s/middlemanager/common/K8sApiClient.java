@@ -42,4 +42,5 @@ public interface K8sApiClient
   String waitForPodFinished(V1Pod peonPod);
   String getPodStatus(V1Pod peonPod);
   void deletePod(V1Pod peonPod);
+  V1Pod getPod(V1Pod peonPod);
 }
