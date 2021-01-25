@@ -197,7 +197,7 @@ spec:
         druid.coordinator.asOverlord.enabled=true
         druid.coordinator.asOverlord.overlordService=druid/overlord
         druid.indexer.queue.startDelay=PT30S
-        druid.indexer.runner.type=remote
+        druid.indexer.runner.type=httpRemote
       extra.jvm.options: |-
         -Xmx800m
         -Xms800m
