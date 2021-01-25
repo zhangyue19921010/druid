@@ -186,9 +186,16 @@ public class K8sForkingTaskRunner
                       final File statusFile = new File(attemptDir, "status.json");
 
                       final File logFile = new File(taskDir, "log");
+
                       if (!logFile.exists()) {
-                        logFile.mkdirs();
+                        if (taskDir.exists()) {
+                          logFile.createNewFile();
+                        } else {
+                          taskDir.mkdirs();
+                          logFile.createNewFile();
+                        }
                       }
+
                       final File reportsFile = new File(attemptDir, "report.json");
                       // time to adjust process holders
                       synchronized (tasks) {
