@@ -164,7 +164,7 @@ public class K8sForkingTaskRunner
                   final K8sProcessHolder processHolder;
                   // POD_IP is defined in env when create peon pod.
                   final String childHost = "$POD_IP";
-                  final String tmpfileLoc = "/tmp";
+                  final String tmpfileLoc = "/druidTmp";
                   int childPort = -1;
                   int tlsChildPort = -1;
 

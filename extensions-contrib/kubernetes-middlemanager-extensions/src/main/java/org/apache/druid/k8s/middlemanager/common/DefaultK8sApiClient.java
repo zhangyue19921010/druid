@@ -128,6 +128,11 @@ public class DefaultK8sApiClient implements K8sApiClient
               .withLabels(labels)
               .endMetadata()
               .withNewSpec()
+              .withNewSecurityContext()
+              .withFsGroup(0L)
+              .withRunAsGroup(0L)
+              .withRunAsUser(0L)
+              .endSecurityContext()
               .addNewVolume()
               .withNewName(volumnName)
               .withConfigMap(new V1ConfigMapVolumeSource().defaultMode(420).name(taskID))
@@ -135,6 +140,9 @@ public class DefaultK8sApiClient implements K8sApiClient
               .withNewRestartPolicy(peonPodRestartPolicy)
               .addNewContainer()
               .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
+              .withNewSecurityContext()
+              .withNewPrivileged(true)
+              .endSecurityContext()
               .withCommand("/bin/sh", "-c")
               .withArgs(comands)
               .withName("peon")
@@ -182,7 +190,7 @@ public class DefaultK8sApiClient implements K8sApiClient
 
     String javaCommands = builder.toString().substring(0, builder.toString().length() - 1);
 
-    final String prepareTaskFiles = "mkdir -p $TASK_DIR; mkdir -p $HOME/var/tmp; mkdir -p $HOME/var/druid/segments; mkdir -p $HOME/var/druid/indexing-logs; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
+    final String prepareTaskFiles = "/druid.sh ForkServer;mkdir -p $TASK_DIR; mkdir -p $HOME/var/tmp; mkdir -p $HOME/var/druid/segments; mkdir -p $HOME/var/druid/indexing-logs; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
     return prepareTaskFiles + javaCommands;
   }
 
