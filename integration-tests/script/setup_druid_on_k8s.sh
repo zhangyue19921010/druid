@@ -40,6 +40,7 @@ chmod 777 tmp
 
 $KUBECTL apply -f integration-tests/k8s/role-and-binding.yaml
 sed -i "s|REPLACE_VOLUMES|`pwd`|g" integration-tests/k8s/tiny-cluster.yaml
+$KUBECTL apply -f integration-tests/k8s/tiny-cluster-zk.yaml
 $KUBECTL apply -f integration-tests/k8s/tiny-cluster.yaml
 
 # Wait a bit
