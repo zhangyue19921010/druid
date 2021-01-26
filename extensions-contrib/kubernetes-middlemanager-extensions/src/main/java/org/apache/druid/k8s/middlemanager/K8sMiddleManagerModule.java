@@ -66,13 +66,14 @@ public class K8sMiddleManagerModule implements DruidModule
                   try {
                     // Note: we can probably improve things here about figuring out how to find the K8S API server,
                     // HTTP client timeouts etc.
+                    // Current is about never timeout.
                     ApiClient client = Config.defaultClient();
                     OkHttpClient httpClient =
                             client.getHttpClient()
                                     .newBuilder()
-                                    .readTimeout(36500, TimeUnit.DAYS)
-                                    .writeTimeout(36500, TimeUnit.DAYS)
-                                    .connectTimeout(36500, TimeUnit.DAYS)
+                                    .readTimeout(Integer.MAX_VALUE, TimeUnit.MILLISECONDS)
+                                    .writeTimeout(Integer.MAX_VALUE, TimeUnit.MILLISECONDS)
+                                    .connectTimeout(Integer.MAX_VALUE, TimeUnit.MILLISECONDS)
                                     .build();
                     client.setHttpClient(httpClient);
                     Configuration.setDefaultApiClient(client);
