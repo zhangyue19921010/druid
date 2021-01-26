@@ -199,14 +199,24 @@ public class K8sForkingTaskRunner
                       final File reportsFile = new File(attemptDir, "report.json");
                       // time to adjust process holders
                       synchronized (tasks) {
-                        final String label_value = StringUtils.toLowerCase(
+                        // replace all the ": - . _" to "" try to reduce the length of pod name and meet pod naming specifications.
+                        final String label_value_ori = StringUtils.toLowerCase(
                                 StringUtils.replace(
                                         StringUtils.replace(
                                                 StringUtils.replace(
-                                                        task.getId(),
-                                                        "_", ""),
-                                                ":", ""),
-                                        ".", ""));
+                                                        StringUtils.replace(
+                                                                task.getId(),
+                                                                "_", ""),
+                                                        ":", ""),
+                                                ".", ""),
+                                        "-", ""));
+                        String label_value;
+                        if (label_value_ori.length() > 50) {
+                          label_value = label_value_ori.substring(label_value_ori.length() - 50);
+                        } else {
+                          label_value = label_value_ori;
+                        }
+
 
                         final K8sForkingTaskRunnerWorkItem taskWorkItem = tasks.get(task.getId());
 

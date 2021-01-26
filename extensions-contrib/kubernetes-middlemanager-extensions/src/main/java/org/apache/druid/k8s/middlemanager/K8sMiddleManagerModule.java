@@ -24,7 +24,9 @@ import com.google.inject.Binder;
 import com.google.inject.Key;
 import com.google.inject.multibindings.MapBinder;
 import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.util.Config;
+import okhttp3.OkHttpClient;
 import org.apache.druid.guice.JsonConfigProvider;
 import org.apache.druid.guice.LazySingleton;
 import org.apache.druid.guice.PolyBind;
@@ -36,6 +38,7 @@ import org.apache.druid.k8s.middlemanager.common.K8sApiClient;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class K8sMiddleManagerModule implements DruidModule
 {
@@ -63,7 +66,17 @@ public class K8sMiddleManagerModule implements DruidModule
                   try {
                     // Note: we can probably improve things here about figuring out how to find the K8S API server,
                     // HTTP client timeouts etc.
-                    return Config.defaultClient();
+                    ApiClient client = Config.defaultClient();
+                    OkHttpClient httpClient =
+                            client.getHttpClient()
+                                    .newBuilder()
+                                    .readTimeout(36500, TimeUnit.DAYS)
+                                    .writeTimeout(36500, TimeUnit.DAYS)
+                                    .connectTimeout(36500, TimeUnit.DAYS)
+                                    .build();
+                    client.setHttpClient(httpClient);
+                    Configuration.setDefaultApiClient(client);
+                    return client;
                   }
                   catch (IOException ex) {
                     throw new RuntimeException("Failed to create K8s ApiClient instance", ex);
