@@ -34,6 +34,7 @@ import io.kubernetes.client.openapi.models.V1ConfigMapBuilder;
 import io.kubernetes.client.openapi.models.V1ConfigMapList;
 import io.kubernetes.client.openapi.models.V1ConfigMapVolumeSource;
 import io.kubernetes.client.openapi.models.V1ContainerPort;
+import io.kubernetes.client.openapi.models.V1DeleteOptions;
 import io.kubernetes.client.openapi.models.V1EnvVar;
 import io.kubernetes.client.openapi.models.V1EnvVarBuilder;
 import io.kubernetes.client.openapi.models.V1ObjectFieldSelector;
@@ -44,6 +45,7 @@ import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
+import io.kubernetes.client.util.generic.options.DeleteOptions;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.RE;
 import org.apache.druid.java.util.common.StringUtils;
@@ -323,6 +325,9 @@ public class DefaultK8sApiClient implements K8sApiClient
   public void deletePod(V1Pod peonPod)
   {
     V1ObjectMeta mt = peonPod.getMetadata();
+//    DeleteOptions deleteOptions = new DeleteOptions();
+//    deleteOptions.setGracePeriodSeconds(3600L);
+//    podClient.delete(mt.getNamespace(), mt.getName(), deleteOptions).getObject();
     podClient.delete(mt.getNamespace(), mt.getName()).getObject();
     LOGGER.info("Peon Pod deleted : [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
   }
