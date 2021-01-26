@@ -190,7 +190,7 @@ public class DefaultK8sApiClient implements K8sApiClient
 
     String javaCommands = builder.toString().substring(0, builder.toString().length() - 1);
 
-    final String prepareTaskFiles = "mkdir -p /tmp/conf/;test -d /tmp/conf/druid && rm -r /tmp/conf/druid;cp -r /opt/druid/conf/druid /tmp/conf/druid;mkdir -p $TASK_DIR; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
+    final String prepareTaskFiles = "mkdir -p /tmp/conf/;test -d /tmp/conf/druid && rm -r /tmp/conf/druid;cp -r /opt/druid/conf/druid /tmp/conf/druid;mkdir -p $TASK_DIR; cp $TASK_JSON_TMP_LOCATION $TASK_DIR;";
     return prepareTaskFiles + javaCommands;
   }
 
@@ -315,7 +315,7 @@ public class DefaultK8sApiClient implements K8sApiClient
   public void deletePod(V1Pod peonPod)
   {
     V1ObjectMeta mt = peonPod.getMetadata();
-//    podClient.delete(mt.getNamespace(), mt.getName()).getObject();
+    podClient.delete(mt.getNamespace(), mt.getName()).getObject();
     LOGGER.info("Peon Pod deleted : [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
   }
 
