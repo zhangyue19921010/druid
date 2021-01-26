@@ -124,7 +124,7 @@ public class DefaultK8sApiClient implements K8sApiClient
       V1Pod pod = new V1PodBuilder()
               .withNewMetadata()
               .withNamespace(namespace)
-              .withName(taskID + "-pod")
+              .withName(taskID)
               .withLabels(labels)
               .endMetadata()
               .withNewSpec()

@@ -204,9 +204,9 @@ public class K8sForkingTaskRunner
                                         StringUtils.replace(
                                                 StringUtils.replace(
                                                         task.getId(),
-                                                        "_", "-"),
-                                                ":", "-"),
-                                        ".", "-"));
+                                                        "_", ""),
+                                                ":", ""),
+                                        ".", ""));
 
                         final K8sForkingTaskRunnerWorkItem taskWorkItem = tasks.get(task.getId());
 
