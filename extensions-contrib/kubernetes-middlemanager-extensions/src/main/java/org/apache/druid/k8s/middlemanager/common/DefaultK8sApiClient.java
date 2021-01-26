@@ -327,7 +327,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     V1ObjectMeta mt = peonPod.getMetadata();
     DeleteOptions deleteOptions = new DeleteOptions();
     deleteOptions.setGracePeriodSeconds(3600L);
-    podClient.delete(mt.getNamespace(), mt.getName(), deleteOptions).getObject();
+    podClient.delete(mt.getNamespace(), mt.getName(), deleteOptions);
     LOGGER.info("Peon Pod deleted : [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
   }
 
