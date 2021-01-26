@@ -300,7 +300,15 @@ public class DefaultK8sApiClient implements K8sApiClient
   public String getPodStatus(V1Pod peonPod)
   {
     V1ObjectMeta mt = peonPod.getMetadata();
-    return podClient.get(mt.getNamespace(), mt.getName()).getObject().getStatus().getPhase();
+    String phase = "Failed";
+    try {
+      phase = podClient.get(mt.getNamespace(), mt.getName()).getObject().getStatus().getPhase();
+    }
+    catch (NullPointerException ex) {
+      LOGGER.warn(ex, "can't get [%s/%s] phase", mt.getNamespace(), mt.getName());
+    }
+
+    return phase;
   }
 
   @Override
