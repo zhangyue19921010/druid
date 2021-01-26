@@ -715,7 +715,7 @@ public class K8sForkingTaskRunner
       // Will trigger normal failure mechanisms due to process exit
       LOGGER.info("Closing output stream to task[%s].", taskInfo.getTask().getId());
       try {
-//        taskInfo.processHolder.deletePod();
+        taskInfo.processHolder.deletePod();
       }
       catch (Exception e) {
         LOGGER.warn(e, "Failed to close stdout to task[%s]. Destroying task.", taskInfo.getTask().getId());
