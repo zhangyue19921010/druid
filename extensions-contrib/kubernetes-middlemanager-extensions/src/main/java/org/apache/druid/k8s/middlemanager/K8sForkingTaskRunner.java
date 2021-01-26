@@ -217,7 +217,6 @@ public class K8sForkingTaskRunner
                           label_value = label_value_ori;
                         }
 
-
                         final K8sForkingTaskRunnerWorkItem taskWorkItem = tasks.get(task.getId());
 
                         if (taskWorkItem == null) {
@@ -716,7 +715,8 @@ public class K8sForkingTaskRunner
       // Will trigger normal failure mechanisms due to process exit
       LOGGER.info("Closing output stream to task[%s].", taskInfo.getTask().getId());
       try {
-        taskInfo.processHolder.getInputStream().close();
+        //taskInfo.processHolder.getInputStream().close();
+        // do nothing
       }
       catch (Exception e) {
         LOGGER.warn(e, "Failed to close stdout to task[%s]. Destroying task.", taskInfo.getTask().getId());

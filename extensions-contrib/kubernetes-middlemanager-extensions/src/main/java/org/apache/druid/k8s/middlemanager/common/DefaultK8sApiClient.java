@@ -190,7 +190,7 @@ public class DefaultK8sApiClient implements K8sApiClient
 
     String javaCommands = builder.toString().substring(0, builder.toString().length() - 1);
 
-    final String prepareTaskFiles = "/druid.sh ForkServer;mkdir -p $TASK_DIR; mkdir -p $HOME/var/tmp; mkdir -p $HOME/var/druid/segments; mkdir -p $HOME/var/druid/indexing-logs; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
+    final String prepareTaskFiles = "mkdir -p /tmp/conf/;test -d /tmp/conf/druid && rm -r /tmp/conf/druid;cp -r /opt/druid/conf/druid /tmp/conf/druid;mkdir -p $TASK_DIR; cp $TASK_JSON_TMP_LOCATION $TASK_DIR; ls -alt var/druid/task ;";
     return prepareTaskFiles + javaCommands;
   }
 

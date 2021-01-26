@@ -1459,8 +1459,6 @@ public class HttpRemoteTaskRunner implements WorkerTaskRunner, TaskLogStreamer
               case RUNNING:
                 if (worker.getHost().equals(taskItem.getWorker().getHost())) {
                   if (!announcement.getTaskLocation().equals(taskItem.getLocation())) {
-                    log.info("Get Location from taskItem [%s]", taskItem.getLocation());
-                    log.info("Get Location from announcement [%s]", announcement.getTaskLocation());
                     log.info(
                         "Task[%s] location changed on worker[%s]. new location[%s].",
                         taskId,
