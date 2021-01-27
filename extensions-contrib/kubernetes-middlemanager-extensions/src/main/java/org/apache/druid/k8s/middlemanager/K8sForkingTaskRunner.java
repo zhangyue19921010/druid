@@ -441,7 +441,8 @@ public class K8sForkingTaskRunner
                           logFile,
                           taskLocation.getHost(),
                           taskLocation.getPort(),
-                          taskLocation.getTlsPort()
+                          taskLocation.getTlsPort(),
+                          labels
                         );
 
                         processHolder = taskWorkItem.processHolder;
@@ -514,6 +515,8 @@ public class K8sForkingTaskRunner
                         if (taskWorkItem != null && taskWorkItem.processHolder != null) {
                           // delete finished pod
                           taskWorkItem.processHolder.deletePod();
+                          taskWorkItem.processHolder.deleteConfigmap();
+
                         }
                         if (!stopping) {
                           saveRunningTasks();
@@ -720,10 +723,12 @@ public class K8sForkingTaskRunner
       LOGGER.info("Closing output stream to task[%s].", taskInfo.getTask().getId());
       try {
         taskInfo.processHolder.deletePod();
+        taskInfo.processHolder.deleteConfigmap();
       }
       catch (Exception e) {
         LOGGER.warn(e, "Failed to close stdout to task[%s]. Destroying task.", taskInfo.getTask().getId());
         taskInfo.processHolder.deletePod();
+        taskInfo.processHolder.deleteConfigmap();
       }
     }
   }
@@ -830,8 +835,9 @@ public class K8sForkingTaskRunner
     private final int port;
     private final int tlsPort;
     private final InputStream is;
+    private final String labels;
 
-    private K8sProcessHolder(V1Pod peonPod, File logFile, String host, int port, int tlsPort)
+    private K8sProcessHolder(V1Pod peonPod, File logFile, String host, int port, int tlsPort, String labels)
     {
       this.peonPod = peonPod;
       this.logFile = logFile;
@@ -839,6 +845,7 @@ public class K8sForkingTaskRunner
       this.port = port;
       this.tlsPort = tlsPort;
       this.is = k8sApiClient.getPodLogs(peonPod);
+      this.labels = labels;
     }
 
     private void registerWithCloser(Closer closer)
@@ -860,6 +867,12 @@ public class K8sForkingTaskRunner
     {
       k8sApiClient.deletePod(peonPod);
     }
+
+    private void deleteConfigmap()
+    {
+      k8sApiClient.deleteConfigmap(peonPod, labels);
+    }
+
 
     private String getPodStatus()
     {

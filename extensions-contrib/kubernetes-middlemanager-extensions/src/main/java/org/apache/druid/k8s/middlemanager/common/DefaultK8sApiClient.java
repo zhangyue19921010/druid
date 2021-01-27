@@ -278,7 +278,6 @@ public class DefaultK8sApiClient implements K8sApiClient
   @Override
   public Boolean configMapIsExist(String namespace, String labelSelector)
   {
-
     try {
       V1ConfigMapList v1ConfigMapList = coreV1Api.listNamespacedConfigMap(namespace, null, null, null, null, labelSelector, null, null, null, null);
       return !v1ConfigMapList.getItems().isEmpty();
@@ -376,6 +375,20 @@ public class DefaultK8sApiClient implements K8sApiClient
   {
     V1ObjectMeta mt = peonPod.getMetadata();
     return podClient.get(mt.getNamespace(), mt.getName()).getObject();
+  }
+
+  @Override
+  public void deleteConfigmap(V1Pod peonPod, String labels)
+  {
+    String namespace = peonPod.getMetadata().getNamespace();
+    try {
+      LOGGER.info("Start to delete pod related configmap : [%s/%s/%s]", namespace, peonPod.getMetadata().getName(), labels);
+      coreV1Api.deleteCollectionNamespacedConfigMap(namespace, null, null, null, null, 0, labels, null, null, null, null, null, null);
+      LOGGER.info("Pod related configmap deleted : [%s/%s/%s]", namespace, peonPod.getMetadata().getName(), labels);
+    }
+    catch (ApiException ex) {
+      LOGGER.warn(ex, "Failed to delete configmap[%s/%s/%s], code[%d], error[%s].", namespace, peonPod.getMetadata().getName(), labels, ex.getCode(), ex.getResponseBody());
+    }
   }
 
 
