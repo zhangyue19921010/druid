@@ -328,6 +328,8 @@ spec:
         druid.indexer.fork.property.druid.processing.numThreads=1
         druid.extensions.loadList=["druid-avro-extensions","druid-hdfs-storage", "druid-kafka-indexing-service", "druid-datasketches", "druid-kubernetes-middlemanager-extensions"]
         druid.indexer.runner.mode=k8s
+        druid.indexer.runner.hostPath=REPLACE_VOLUMES/tmp
+        druid.indexer.runner.mountPath=/druid/data
       extra.jvm.options: |-
         -Xmx256m
         -Xms256m

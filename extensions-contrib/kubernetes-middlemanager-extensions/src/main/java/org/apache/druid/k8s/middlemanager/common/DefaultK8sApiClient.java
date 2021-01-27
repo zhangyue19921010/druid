@@ -34,7 +34,6 @@ import io.kubernetes.client.openapi.models.V1ConfigMapBuilder;
 import io.kubernetes.client.openapi.models.V1ConfigMapList;
 import io.kubernetes.client.openapi.models.V1ConfigMapVolumeSource;
 import io.kubernetes.client.openapi.models.V1ContainerPort;
-import io.kubernetes.client.openapi.models.V1DeleteOptions;
 import io.kubernetes.client.openapi.models.V1EnvVar;
 import io.kubernetes.client.openapi.models.V1EnvVarBuilder;
 import io.kubernetes.client.openapi.models.V1ObjectFieldSelector;
@@ -45,7 +44,6 @@ import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
-import io.kubernetes.client.util.generic.options.DeleteOptions;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.RE;
 import org.apache.druid.java.util.common.StringUtils;
@@ -54,6 +52,7 @@ import org.apache.druid.java.util.common.logger.Logger;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -97,10 +96,16 @@ public class DefaultK8sApiClient implements K8sApiClient
    * @return
    */
   @Override
-  public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc, String peonPodRestartPolicy)
+  public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc, String peonPodRestartPolicy, String hostPath, String mountPath)
   {
     try {
-      final String volumnName = "task-json-vol-tmp";
+      final String configMapVolumnName = "task-json-vol-tmp";
+      V1VolumeMount configmapVolumnMount = new V1VolumeMount().name(configMapVolumnName).mountPath(tempLoc);
+      V1ConfigMapVolumeSource configmapVolumn = new V1ConfigMapVolumeSource().defaultMode(420).name(taskID);
+
+      ArrayList<V1VolumeMount> v1VolumeMounts = new ArrayList<>();
+      v1VolumeMounts.add(configmapVolumnMount);
+
       String comands = buildCommands(args);
 
       V1EnvVar podIpEnv = new V1EnvVarBuilder()
@@ -123,41 +128,94 @@ public class DefaultK8sApiClient implements K8sApiClient
               .withName("TASK_JSON_TMP_LOCATION")
               .withNewValue(tempLoc + "/task.json").build();
 
-      V1Pod pod = new V1PodBuilder()
-              .withNewMetadata()
-              .withNamespace(namespace)
-              .withName(taskID)
-              .withLabels(labels)
-              .endMetadata()
-              .withNewSpec()
-              .withNewSecurityContext()
-              .withFsGroup(0L)
-              .withRunAsGroup(0L)
-              .withRunAsUser(0L)
-              .endSecurityContext()
-              .addNewVolume()
-              .withNewName(volumnName)
-              .withConfigMap(new V1ConfigMapVolumeSource().defaultMode(420).name(taskID))
-              .endVolume()
-              .withNewRestartPolicy(peonPodRestartPolicy)
-              .addNewContainer()
-              .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
-              .withNewSecurityContext()
-              .withNewPrivileged(true)
-              .endSecurityContext()
-              .withCommand("/bin/sh", "-c")
-              .withArgs(comands)
-              .withName("peon")
-              .withImage(image)
-              .withImagePullPolicy("IfNotPresent")
-              .withVolumeMounts(new V1VolumeMount().name(volumnName).mountPath(tempLoc))
-              .withEnv(ImmutableList.of(podIpEnv, task_id, task_dir, task_json_tmp_location))
-              .withNewResources()
-              .withLimits(resourceLimit)
-              .endResources()
-              .endContainer()
-              .endSpec()
-              .build();
+      V1Pod pod;
+
+      if (!mountPath.isEmpty() && !hostPath.isEmpty()) {
+
+        final String hostVolumnName = "data-volumn-for-druid-local";
+        V1VolumeMount hostVolumnMount = new V1VolumeMount().name(hostVolumnName).mountPath(mountPath);
+        v1VolumeMounts.add(hostVolumnMount);
+
+        pod = new V1PodBuilder()
+                .withNewMetadata()
+                .withNamespace(namespace)
+                .withName(taskID)
+                .withLabels(labels)
+                .endMetadata()
+                .withNewSpec()
+                .withNewSecurityContext()
+                .withFsGroup(0L)
+                .withRunAsGroup(0L)
+                .withRunAsUser(0L)
+                .endSecurityContext()
+                .addNewVolume()
+                .withNewName(configMapVolumnName)
+                .withConfigMap(configmapVolumn)
+                .endVolume()
+                .addNewVolume()
+                .withNewName(hostVolumnName)
+                .withNewHostPath()
+                .withNewPath(hostPath)
+                .withNewType("")
+                .endHostPath()
+                .endVolume()
+                .withNewRestartPolicy(peonPodRestartPolicy)
+                .addNewContainer()
+                .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
+                .withNewSecurityContext()
+                .withNewPrivileged(true)
+                .endSecurityContext()
+                .withCommand("/bin/sh", "-c")
+                .withArgs(comands)
+                .withName("peon")
+                .withImage(image)
+                .withImagePullPolicy("IfNotPresent")
+                .withVolumeMounts(v1VolumeMounts)
+                .withEnv(ImmutableList.of(podIpEnv, task_id, task_dir, task_json_tmp_location))
+                .withNewResources()
+                .withLimits(resourceLimit)
+                .endResources()
+                .endContainer()
+                .endSpec()
+                .build();
+      } else {
+        pod = new V1PodBuilder()
+                .withNewMetadata()
+                .withNamespace(namespace)
+                .withName(taskID)
+                .withLabels(labels)
+                .endMetadata()
+                .withNewSpec()
+                .withNewSecurityContext()
+                .withFsGroup(0L)
+                .withRunAsGroup(0L)
+                .withRunAsUser(0L)
+                .endSecurityContext()
+                .addNewVolume()
+                .withNewName(configMapVolumnName)
+                .withConfigMap(configmapVolumn)
+                .endVolume()
+                .withNewRestartPolicy(peonPodRestartPolicy)
+                .addNewContainer()
+                .withPorts(new V1ContainerPort().protocol("TCP").containerPort(childPort).name("http"))
+                .withNewSecurityContext()
+                .withNewPrivileged(true)
+                .endSecurityContext()
+                .withCommand("/bin/sh", "-c")
+                .withArgs(comands)
+                .withName("peon")
+                .withImage(image)
+                .withImagePullPolicy("IfNotPresent")
+                .withVolumeMounts(v1VolumeMounts)
+                .withEnv(ImmutableList.of(podIpEnv, task_id, task_dir, task_json_tmp_location))
+                .withNewResources()
+                .withLimits(resourceLimit)
+                .endResources()
+                .endContainer()
+                .endSpec()
+                .build();
+      }
+
       V1Pod peonPod = coreV1Api.createNamespacedPod(namespace, pod, null, null, null);
       return peonPod;
     }

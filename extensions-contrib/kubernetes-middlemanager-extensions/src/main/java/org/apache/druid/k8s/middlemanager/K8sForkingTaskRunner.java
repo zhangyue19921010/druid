@@ -263,6 +263,8 @@ public class K8sForkingTaskRunner
                               new K8sQuotableWhiteSpaceSplitter((String) taskJavaOpts)
                           );
                         }
+                        String hostPath = props.getProperty("druid.indexer.runner.hostPath", "");
+                        String mountPath = props.getProperty("druid.indexer.runner.mountPath", "");
 
                         for (String propName : props.stringPropertyNames()) {
                           for (String allowedPrefix : config.getAllowedPrefixes()) {
@@ -426,7 +428,9 @@ public class K8sForkingTaskRunner
                                 childPort,
                                 tlsChildPort,
                                 tmpfileLoc,
-                                "Never");
+                                "Never",
+                                hostPath,
+                                mountPath);
                         LOGGER.info("PeonPod createtd %s/%s", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
 
                         k8sApiClient.waitForPodRunning(peonPod, labels);
