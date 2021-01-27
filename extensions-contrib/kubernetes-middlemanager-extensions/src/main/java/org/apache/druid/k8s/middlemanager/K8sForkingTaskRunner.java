@@ -101,6 +101,9 @@ public class K8sForkingTaskRunner
   private static final String CHILD_PROPERTY_PREFIX = "druid.indexer.fork.property.";
   private static final String DRUID_INDEXER_NAMESPACE = "druid.indexer.namesspace";
   private static final String DRUID_INDEXER_IMAGE = "druid.indexer.image";
+  private static final String DRUID_PEON_JAVA_OPTS = "druid.peon.javaOpts";
+  private static final String DRUID_PEON_POD_MEMORY = "druid.peon.pod.memory";
+  private static final String DRUID_PEON_POD_CPU = "druid.peon.pod.cpu";
   private static final String LABLE_KEY = "druid.ingest.task.id";
   private final ForkingTaskRunnerConfig config;
   private final Properties props;
@@ -250,7 +253,16 @@ public class K8sForkingTaskRunner
                         command.add("-cp");
                         command.add(taskClasspath);
 
-                        Iterables.addAll(command, new K8sQuotableWhiteSpaceSplitter(config.getJavaOpts()));
+                        String peonPodJavaOpts = task.getContextValue(DRUID_PEON_JAVA_OPTS, "");
+
+                        if (peonPodJavaOpts.isEmpty()) {
+                          LOGGER.info("Get JavaOpts From ForkingTaskRunnerConfig [%s]", config.getJavaOpts());
+                          Iterables.addAll(command, new K8sQuotableWhiteSpaceSplitter(config.getJavaOpts()));
+                        } else {
+                          LOGGER.info("Get JavaOpts From Task Context [%s]", peonPodJavaOpts);
+                          Iterables.addAll(command, new K8sQuotableWhiteSpaceSplitter(peonPodJavaOpts));
+                        }
+
                         Iterables.addAll(command, config.getJavaOptsArray());
 
                         // Override task specific javaOpts
@@ -418,11 +430,14 @@ public class K8sForkingTaskRunner
 
                         LOGGER.info("Running command: %s", getMaskedCommand(startupLoggingConfig.getMaskProperties(), command));
 
+                        String cpu = task.getContextValue(DRUID_PEON_POD_CPU, "1");
+                        String memory = task.getContextValue(DRUID_PEON_POD_MEMORY, "2G");
+
                         V1Pod peonPod = k8sApiClient.createPod(label_value,
                                 image,
                                 nameSpace,
                                 ImmutableMap.of(LABLE_KEY, label_value),
-                                ImmutableMap.of("cpu", Quantity.fromString("1"), "memory", Quantity.fromString("2G")),
+                                ImmutableMap.of("cpu", Quantity.fromString(cpu), "memory", Quantity.fromString(memory)),
                                 taskDir,
                                 command,
                                 childPort,
