@@ -99,12 +99,16 @@ public class K8sForkingTaskRunner
 {
   private static final EmittingLogger LOGGER = new EmittingLogger(K8sForkingTaskRunner.class);
   private static final String CHILD_PROPERTY_PREFIX = "druid.indexer.fork.property.";
-  private static final String DRUID_INDEXER_NAMESPACE = "druid.indexer.namesspace";
+  private static final String DRUID_INDEXER_NAMESPACE = "druid.indexer.namespace";
   private static final String DRUID_INDEXER_IMAGE = "druid.indexer.image";
+  private static final String DRUID_INDEXER_DEFAULT_POD_CPU = "druid.indexer.default.pod.cpu";
+  private static final String DRUID_INDEXER_DEFAULT_POD_MEMORY = "druid.indexer.default.pod.memory";
+  private static final String DRUID_INDEXER_RUNNER_HOST_PATH = "druid.indexer.runner.hostPath";
+  private static final String DRUID_INDEXER_RUNNER_MOUNT_PATH = "druid.indexer.runner.mountPath";
   private static final String DRUID_PEON_JAVA_OPTS = "druid.peon.javaOpts";
   private static final String DRUID_PEON_POD_MEMORY = "druid.peon.pod.memory";
   private static final String DRUID_PEON_POD_CPU = "druid.peon.pod.cpu";
-  private static final String LABLE_KEY = "druid.ingest.task.id";
+  private static final String LABEL_KEY = "druid.ingest.task.id";
   private final ForkingTaskRunnerConfig config;
   private final Properties props;
   private final TaskLogPusher taskLogPusher;
@@ -117,6 +121,8 @@ public class K8sForkingTaskRunner
   private volatile boolean stopping = false;
   private final String nameSpace;
   private final String image;
+  private final String defaultPodCPU;
+  private final String defaultPodMemory;
 
   @Inject
   public K8sForkingTaskRunner(
@@ -144,6 +150,9 @@ public class K8sForkingTaskRunner
     this.k8sApiClient = k8sApiClient;
     this.nameSpace = props.getProperty(DRUID_INDEXER_NAMESPACE, "default");
     this.image = props.getProperty(DRUID_INDEXER_IMAGE, "druid/cluster:v1");
+    this.defaultPodCPU = props.getProperty(DRUID_INDEXER_DEFAULT_POD_CPU, "1");
+    this.defaultPodMemory = props.getProperty(DRUID_INDEXER_DEFAULT_POD_MEMORY, "2G");
+
     assert image != null;
   }
 
@@ -167,7 +176,7 @@ public class K8sForkingTaskRunner
                   final K8sProcessHolder processHolder;
                   // POD_IP is defined in env when create peon pod.
                   final String childHost = "$POD_IP";
-                  final String tmpfileLoc = "/druidTmp";
+                  final String tmpFileLoc = "/druidTmp";
                   int childPort = -1;
                   int tlsChildPort = -1;
 
@@ -275,8 +284,9 @@ public class K8sForkingTaskRunner
                               new K8sQuotableWhiteSpaceSplitter((String) taskJavaOpts)
                           );
                         }
-                        String hostPath = props.getProperty("druid.indexer.runner.hostPath", "");
-                        String mountPath = props.getProperty("druid.indexer.runner.mountPath", "");
+
+                        String hostPath = props.getProperty(DRUID_INDEXER_RUNNER_HOST_PATH, "");
+                        String mountPath = props.getProperty(DRUID_INDEXER_RUNNER_MOUNT_PATH, "");
 
                         for (String propName : props.stringPropertyNames()) {
                           for (String allowedPrefix : config.getAllowedPrefixes()) {
@@ -422,27 +432,36 @@ public class K8sForkingTaskRunner
                           command.add("true");
                         }
 
-                        String labels = LABLE_KEY + "=" + label_value;
+                        String labels = LABEL_KEY + "=" + label_value;
                         if (!k8sApiClient.configMapIsExist(nameSpace, labels)) {
                           String taskString = jsonMapper.writeValueAsString(task);
-                          k8sApiClient.createConfigMap(nameSpace, label_value, ImmutableMap.of(LABLE_KEY, label_value), ImmutableMap.of("task.json", taskString));
+                          k8sApiClient.createConfigMap(nameSpace, label_value, ImmutableMap.of(LABEL_KEY, label_value), ImmutableMap.of("task.json", taskString));
                         }
 
                         LOGGER.info("Running command: %s", getMaskedCommand(startupLoggingConfig.getMaskProperties(), command));
 
-                        String cpu = task.getContextValue(DRUID_PEON_POD_CPU, "1");
-                        String memory = task.getContextValue(DRUID_PEON_POD_MEMORY, "2G");
+                        String cpu = defaultPodCPU;
+                        String memory = defaultPodMemory;
+                        String cpuFromContext = task.getContextValue(DRUID_PEON_POD_CPU, "");
+                        String memoryFromContext = task.getContextValue(DRUID_PEON_POD_MEMORY, "");
+
+                        if (!cpuFromContext.isEmpty()) {
+                          cpu = cpuFromContext;
+                        }
+                        if (!memoryFromContext.isEmpty()) {
+                          memory = memoryFromContext;
+                        }
 
                         V1Pod peonPod = k8sApiClient.createPod(label_value,
                                 image,
                                 nameSpace,
-                                ImmutableMap.of(LABLE_KEY, label_value),
+                                ImmutableMap.of(LABEL_KEY, label_value),
                                 ImmutableMap.of("cpu", Quantity.fromString(cpu), "memory", Quantity.fromString(memory)),
                                 taskDir,
                                 command,
                                 childPort,
                                 tlsChildPort,
-                                tmpfileLoc,
+                                tmpFileLoc,
                                 "Never",
                                 hostPath,
                                 mountPath);
@@ -530,7 +549,7 @@ public class K8sForkingTaskRunner
                         if (taskWorkItem != null && taskWorkItem.processHolder != null) {
                           // delete finished pod
                           taskWorkItem.processHolder.deletePod();
-                          taskWorkItem.processHolder.deleteConfigmap();
+                          taskWorkItem.processHolder.deleteConfigMap();
 
                         }
                         if (!stopping) {
@@ -738,12 +757,12 @@ public class K8sForkingTaskRunner
       LOGGER.info("Closing output stream to task[%s].", taskInfo.getTask().getId());
       try {
         taskInfo.processHolder.deletePod();
-        taskInfo.processHolder.deleteConfigmap();
+        taskInfo.processHolder.deleteConfigMap();
       }
       catch (Exception e) {
         LOGGER.warn(e, "Failed to close stdout to task[%s]. Destroying task.", taskInfo.getTask().getId());
         taskInfo.processHolder.deletePod();
-        taskInfo.processHolder.deleteConfigmap();
+        taskInfo.processHolder.deleteConfigMap();
       }
     }
   }
@@ -883,9 +902,9 @@ public class K8sForkingTaskRunner
       k8sApiClient.deletePod(peonPod);
     }
 
-    private void deleteConfigmap()
+    private void deleteConfigMap()
     {
-      k8sApiClient.deleteConfigmap(peonPod, labels);
+      k8sApiClient.deleteConfigMap(peonPod, labels);
     }
 
 

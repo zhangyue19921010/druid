@@ -38,6 +38,8 @@ import io.kubernetes.client.openapi.models.V1EnvVar;
 import io.kubernetes.client.openapi.models.V1EnvVarBuilder;
 import io.kubernetes.client.openapi.models.V1ObjectFieldSelector;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1OwnerReference;
+import io.kubernetes.client.openapi.models.V1OwnerReferenceBuilder;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodBuilder;
 import io.kubernetes.client.openapi.models.V1PodList;
@@ -99,14 +101,22 @@ public class DefaultK8sApiClient implements K8sApiClient
   public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc, String peonPodRestartPolicy, String hostPath, String mountPath)
   {
     try {
-      final String configMapVolumnName = "task-json-vol-tmp";
-      V1VolumeMount configmapVolumnMount = new V1VolumeMount().name(configMapVolumnName).mountPath(tempLoc);
-      V1ConfigMapVolumeSource configmapVolumn = new V1ConfigMapVolumeSource().defaultMode(420).name(taskID);
+      final String configMapVolumeName = "task-json-vol-tmp";
+      V1VolumeMount configMapVolumeMount = new V1VolumeMount().name(configMapVolumeName).mountPath(tempLoc);
+      V1ConfigMapVolumeSource configMapVolume = new V1ConfigMapVolumeSource().defaultMode(420).name(taskID);
 
       ArrayList<V1VolumeMount> v1VolumeMounts = new ArrayList<>();
-      v1VolumeMounts.add(configmapVolumnMount);
+      v1VolumeMounts.add(configMapVolumeMount);
 
-      String comands = buildCommands(args);
+      String commands = buildCommands(args);
+
+      V1OwnerReference owner = new V1OwnerReferenceBuilder()
+              .withName(System.getenv("POD_NAME"))
+              .withApiVersion("v1")
+              .withUid(System.getenv("POD_UID"))
+              .withKind("Pod")
+              .withController(true)
+              .build();
 
       V1EnvVar podIpEnv = new V1EnvVarBuilder()
               .withName("POD_IP")
@@ -132,12 +142,13 @@ public class DefaultK8sApiClient implements K8sApiClient
 
       if (!mountPath.isEmpty() && !hostPath.isEmpty()) {
 
-        final String hostVolumnName = "data-volumn-for-druid-local";
-        V1VolumeMount hostVolumnMount = new V1VolumeMount().name(hostVolumnName).mountPath(mountPath);
-        v1VolumeMounts.add(hostVolumnMount);
+        final String hostVolumeName = "data-volume-for-druid-local";
+        V1VolumeMount hostVolumeMount = new V1VolumeMount().name(hostVolumeName).mountPath(mountPath);
+        v1VolumeMounts.add(hostVolumeMount);
 
         pod = new V1PodBuilder()
                 .withNewMetadata()
+                .withOwnerReferences(owner)
                 .withNamespace(namespace)
                 .withName(taskID)
                 .withLabels(labels)
@@ -149,11 +160,11 @@ public class DefaultK8sApiClient implements K8sApiClient
                 .withRunAsUser(0L)
                 .endSecurityContext()
                 .addNewVolume()
-                .withNewName(configMapVolumnName)
-                .withConfigMap(configmapVolumn)
+                .withNewName(configMapVolumeName)
+                .withConfigMap(configMapVolume)
                 .endVolume()
                 .addNewVolume()
-                .withNewName(hostVolumnName)
+                .withNewName(hostVolumeName)
                 .withNewHostPath()
                 .withNewPath(hostPath)
                 .withNewType("")
@@ -166,7 +177,7 @@ public class DefaultK8sApiClient implements K8sApiClient
                 .withNewPrivileged(true)
                 .endSecurityContext()
                 .withCommand("/bin/sh", "-c")
-                .withArgs(comands)
+                .withArgs(commands)
                 .withName("peon")
                 .withImage(image)
                 .withImagePullPolicy("IfNotPresent")
@@ -182,6 +193,7 @@ public class DefaultK8sApiClient implements K8sApiClient
       } else {
         pod = new V1PodBuilder()
                 .withNewMetadata()
+                .withOwnerReferences(owner)
                 .withNamespace(namespace)
                 .withName(taskID)
                 .withLabels(labels)
@@ -193,8 +205,8 @@ public class DefaultK8sApiClient implements K8sApiClient
                 .withRunAsUser(0L)
                 .endSecurityContext()
                 .addNewVolume()
-                .withNewName(configMapVolumnName)
-                .withConfigMap(configmapVolumn)
+                .withNewName(configMapVolumeName)
+                .withConfigMap(configMapVolume)
                 .endVolume()
                 .withNewRestartPolicy(peonPodRestartPolicy)
                 .addNewContainer()
@@ -203,7 +215,7 @@ public class DefaultK8sApiClient implements K8sApiClient
                 .withNewPrivileged(true)
                 .endSecurityContext()
                 .withCommand("/bin/sh", "-c")
-                .withArgs(comands)
+                .withArgs(commands)
                 .withName("peon")
                 .withImage(image)
                 .withImagePullPolicy("IfNotPresent")
@@ -218,8 +230,7 @@ public class DefaultK8sApiClient implements K8sApiClient
                 .build();
       }
 
-      V1Pod peonPod = coreV1Api.createNamespacedPod(namespace, pod, null, null, null);
-      return peonPod;
+      return coreV1Api.createNamespacedPod(namespace, pod, null, null, null);
     }
     catch (ApiException ex) {
       LOGGER.warn(ex, "Failed to create pod[%s/%s], code[%d], error[%s].", namespace, taskID, ex.getCode(), ex.getResponseBody());
@@ -257,22 +268,21 @@ public class DefaultK8sApiClient implements K8sApiClient
   }
 
   @Override
-  public V1ConfigMap createConfigMap(String namespace, String configmapName, Map<String, String> labels, Map<String, String> data)
+  public V1ConfigMap createConfigMap(String namespace, String configMapName, Map<String, String> labels, Map<String, String> data)
   {
     V1ConfigMap configMap = new V1ConfigMapBuilder()
             .withNewMetadata()
-            .withName(configmapName)
+            .withName(configMapName)
             .withLabels(labels)
             .endMetadata()
             .withData(data)
             .build();
 
     try {
-      V1ConfigMap conf = coreV1Api.createNamespacedConfigMap(namespace, configMap, null, null, null);
-      return conf;
+      return coreV1Api.createNamespacedConfigMap(namespace, configMap, null, null, null);
     }
     catch (ApiException ex) {
-      LOGGER.warn(ex, "Failed to create configmap[%s/%s], code[%d], error[%s].", namespace, configmapName, ex.getCode(), ex.getResponseBody());
+      LOGGER.warn(ex, "Failed to create configMap[%s/%s], code[%d], error[%s].", namespace, configMapName, ex.getCode(), ex.getResponseBody());
     }
     return null;
   }
@@ -285,7 +295,7 @@ public class DefaultK8sApiClient implements K8sApiClient
       return !v1ConfigMapList.getItems().isEmpty();
     }
     catch (ApiException ex) {
-      LOGGER.warn(ex, "Failed to get configmap[%s/%s], code[%d], error[%s].", namespace, labelSelector, ex.getCode(), ex.getResponseBody());
+      LOGGER.warn(ex, "Failed to get configMap[%s/%s], code[%d], error[%s].", namespace, labelSelector, ex.getCode(), ex.getResponseBody());
     }
     return false;
   }
@@ -304,7 +314,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     try {
       V1PodList v1PodList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, labelSelector, null, null, null, null);
       while (v1PodList.getItems().isEmpty() || getPodStatus(v1PodList.getItems().get(0)).equalsIgnoreCase("Pending")) {
-        LOGGER.info("Still waitting for pod Running [%s/%s]", namespace, podName);
+        LOGGER.info("Still waiting for pod Running [%s/%s]", namespace, podName);
         Thread.sleep(3 * 1000);
         v1PodList = coreV1Api.listNamespacedPod(peonPod.getMetadata().getNamespace(), null, null, null, null, labelSelector, null, null, null, null);
       }
@@ -380,16 +390,16 @@ public class DefaultK8sApiClient implements K8sApiClient
   }
 
   @Override
-  public void deleteConfigmap(V1Pod peonPod, String labels)
+  public void deleteConfigMap(V1Pod peonPod, String labels)
   {
     String namespace = peonPod.getMetadata().getNamespace();
     try {
-      LOGGER.info("Start to delete pod related configmap : [%s/%s/%s]", namespace, peonPod.getMetadata().getName(), labels);
+      LOGGER.info("Start to delete pod related configMap : [%s/%s/%s]", namespace, peonPod.getMetadata().getName(), labels);
       coreV1Api.deleteCollectionNamespacedConfigMap(namespace, null, null, null, null, 0, labels, null, null, null, null, null, null);
-      LOGGER.info("Pod related configmap deleted : [%s/%s/%s]", namespace, peonPod.getMetadata().getName(), labels);
+      LOGGER.info("Pod related configMap deleted : [%s/%s/%s]", namespace, peonPod.getMetadata().getName(), labels);
     }
     catch (ApiException ex) {
-      LOGGER.warn(ex, "Failed to delete configmap[%s/%s/%s], code[%d], error[%s].", namespace, peonPod.getMetadata().getName(), labels, ex.getCode(), ex.getResponseBody());
+      LOGGER.warn(ex, "Failed to delete configMap[%s/%s/%s], code[%d], error[%s].", namespace, peonPod.getMetadata().getName(), labels, ex.getCode(), ex.getResponseBody());
     }
   }
 

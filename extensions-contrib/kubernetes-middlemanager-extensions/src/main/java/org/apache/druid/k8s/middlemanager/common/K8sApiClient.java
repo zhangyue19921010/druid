@@ -55,5 +55,5 @@ public interface K8sApiClient
   String getPodStatus(V1Pod peonPod);
   void deletePod(V1Pod peonPod);
   V1Pod getPod(V1Pod peonPod);
-  void deleteConfigmap(V1Pod peonPod, String labels);
+  void deleteConfigMap(V1Pod peonPod, String labels);
 }
