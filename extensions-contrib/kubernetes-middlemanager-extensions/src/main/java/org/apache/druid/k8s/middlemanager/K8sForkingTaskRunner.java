@@ -465,7 +465,7 @@ public class K8sForkingTaskRunner
                                 "Never",
                                 hostPath,
                                 mountPath);
-                        LOGGER.info("PeonPod createtd %s/%s", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
+                        LOGGER.info("PeonPod created %s/%s", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
 
                         k8sApiClient.waitForPodRunning(peonPod, labels);
 

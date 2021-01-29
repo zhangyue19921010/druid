@@ -270,8 +270,17 @@ public class DefaultK8sApiClient implements K8sApiClient
   @Override
   public V1ConfigMap createConfigMap(String namespace, String configMapName, Map<String, String> labels, Map<String, String> data)
   {
+    V1OwnerReference owner = new V1OwnerReferenceBuilder()
+            .withName(System.getenv("POD_NAME"))
+            .withApiVersion("v1")
+            .withUid(System.getenv("POD_UID"))
+            .withKind("Pod")
+            .withController(true)
+            .build();
+
     V1ConfigMap configMap = new V1ConfigMapBuilder()
             .withNewMetadata()
+            .withOwnerReferences(owner)
             .withName(configMapName)
             .withLabels(labels)
             .endMetadata()
