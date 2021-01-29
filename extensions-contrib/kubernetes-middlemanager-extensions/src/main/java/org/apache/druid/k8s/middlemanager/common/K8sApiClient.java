@@ -33,7 +33,6 @@ import java.util.Map;
  */
 public interface K8sApiClient
 {
-  void patchPod(String podName, String namespace, String jsonPatchStr);
   V1Pod createPod(String taskID,
                   String image,
                   String namespace,

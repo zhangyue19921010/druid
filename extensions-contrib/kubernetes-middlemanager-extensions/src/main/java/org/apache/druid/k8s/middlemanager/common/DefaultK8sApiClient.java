@@ -22,10 +22,8 @@ package org.apache.druid.k8s.middlemanager.common;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
-import io.kubernetes.client.Copy;
 import io.kubernetes.client.PodLogs;
 import io.kubernetes.client.custom.Quantity;
-import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
@@ -47,7 +45,6 @@ import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import org.apache.druid.guice.annotations.Json;
-import org.apache.druid.java.util.common.RE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 
@@ -79,23 +76,22 @@ public class DefaultK8sApiClient implements K8sApiClient
     this.podClient = new GenericKubernetesApi<>(V1Pod.class, V1PodList.class, "", "v1", "pods", realK8sClient);
   }
 
-  @Override
-  public void patchPod(String podName, String podNamespace, String jsonPatchStr)
-  {
-    try {
-      coreV1Api.patchNamespacedPod(podName, podNamespace, new V1Patch(jsonPatchStr), "true", null, null, null);
-    }
-    catch (ApiException ex) {
-      throw new RE(ex, "Failed to patch pod[%s/%s], code[%d], error[%s].", podNamespace, podName, ex.getCode(), ex.getResponseBody());
-    }
-  }
-
   /**
-   * need to be done:
-   * 1. create dir attemptDir and taskDir
-   * 2. port
-   * 3.
-   * @return
+   * Let middlemanager to create peon pod and set peon pod OwnerReference to middlemanager
+   * @param taskID used for pod name
+   * @param image peon pod image
+   * @param namespace peon pod image
+   * @param labels peon pod labels used for pod disscovery
+   * @param resourceLimit set request = limit here
+   * @param taskDir location for task.json
+   * @param args running commands
+   * @param childPort peon port
+   * @param tlsChildPort not support yet
+   * @param tempLoc configmap mount location
+   * @param peonPodRestartPolicy Never and lifecycle is crontroled by middlemanger
+   * @param hostPath peon pod host in K8s network
+   * @param mountPath configmap mountPath
+   * @return peon pod created. could be null is pod creation failed.
    */
   @Override
   public V1Pod createPod(String taskID, String image, String namespace, Map<String, String> labels, Map<String, Quantity> resourceLimit, File taskDir, List<String> args, int childPort, int tlsChildPort, String tempLoc, String peonPodRestartPolicy, String hostPath, String mountPath)
@@ -238,6 +234,16 @@ public class DefaultK8sApiClient implements K8sApiClient
     return null;
   }
 
+  /**
+   * convert commands into usable String:
+   * 1. remove all the \n, \r, \t
+   * 2. convert property=abc;def to property="abc;def"
+   * 3. add prepareTaskFiles to prepare necessary files like task.json before running commands.
+   * 4. convert property=[a,b,c] to property="[\"a\",\"b\",\"c\"]"
+   * 5. convert " to \"
+   * @param args commands
+   * @return a runnable commands in pod.
+   */
   private String buildCommands(List<String> args)
   {
     for (int i = 0; i < args.size(); i++) {
@@ -267,6 +273,9 @@ public class DefaultK8sApiClient implements K8sApiClient
     return prepareTaskFiles + javaCommands;
   }
 
+  /**
+   * create a task.json configmap for peon pod.
+   */
   @Override
   public V1ConfigMap createConfigMap(String namespace, String configMapName, Map<String, String> labels, Map<String, String> data)
   {
@@ -412,7 +421,6 @@ public class DefaultK8sApiClient implements K8sApiClient
     }
   }
 
-
   @Override
   public void deletePod(V1Pod peonPod)
   {
@@ -420,22 +428,5 @@ public class DefaultK8sApiClient implements K8sApiClient
     podClient.delete(mt.getNamespace(), mt.getName());
     LOGGER.info("Peon Pod deleted : [%s/%s]", peonPod.getMetadata().getNamespace(), peonPod.getMetadata().getName());
   }
-
-  public InputStream copyFileFromPod(V1Pod peonPod, String srcPath)
-  {
-    String namespace = peonPod.getMetadata().getNamespace();
-    String name = peonPod.getMetadata().getName();
-    String containerName = peonPod.getSpec().getContainers().get(0).getName();
-    InputStream is = null;
-    try {
-      Copy copyRoot = new Copy(realK8sClient);
-
-      // String namespace, String pod, String container, String srcPath
-      is = copyRoot.copyFileFromPod(namespace, containerName, srcPath);
-    }
-    catch (ApiException | IOException ex) {
-      LOGGER.warn(ex, "Exception get file from pod[%s/%s].", namespace, name);
-    }
-    return is;
-  }
 }
+

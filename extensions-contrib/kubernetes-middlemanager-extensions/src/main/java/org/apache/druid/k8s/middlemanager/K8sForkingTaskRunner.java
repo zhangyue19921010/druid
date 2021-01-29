@@ -211,7 +211,7 @@ public class K8sForkingTaskRunner
                       final File reportsFile = new File(attemptDir, "report.json");
                       // time to adjust process holders
                       synchronized (tasks) {
-                        // replace all the ": - . _" to "" try to reduce the length of pod name and meet pod naming specifications.
+                        // replace all the ": - . _" to "", try to reduce the length of pod name and meet pod naming specifications 63 charts.
                         final String label_value_ori = StringUtils.toLowerCase(
                                 StringUtils.replace(
                                         StringUtils.replace(
@@ -264,6 +264,7 @@ public class K8sForkingTaskRunner
 
                         String peonPodJavaOpts = task.getContextValue(DRUID_PEON_JAVA_OPTS, "");
 
+                        // users can set a separate JVM config for each task through context
                         if (peonPodJavaOpts.isEmpty()) {
                           LOGGER.info("Get JavaOpts From ForkingTaskRunnerConfig [%s]", config.getJavaOpts());
                           Iterables.addAll(command, new K8sQuotableWhiteSpaceSplitter(config.getJavaOpts()));
@@ -285,6 +286,7 @@ public class K8sForkingTaskRunner
                           );
                         }
 
+                        // useed for local deepStorage
                         String hostPath = props.getProperty(DRUID_INDEXER_RUNNER_HOST_PATH, "");
                         String mountPath = props.getProperty(DRUID_INDEXER_RUNNER_MOUNT_PATH, "");
 
