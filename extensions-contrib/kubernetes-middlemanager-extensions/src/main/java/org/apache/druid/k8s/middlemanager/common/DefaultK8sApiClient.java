@@ -63,9 +63,9 @@ public class DefaultK8sApiClient implements K8sApiClient
   private static final Logger LOGGER = new Logger(DefaultK8sApiClient.class);
 
   private final ApiClient realK8sClient;
-  private final CoreV1Api coreV1Api;
+  private CoreV1Api coreV1Api;
   private final ObjectMapper jsonMapper;
-  private final GenericKubernetesApi<V1Pod, V1PodList> podClient;
+  private GenericKubernetesApi<V1Pod, V1PodList> podClient;
 
   @Inject
   public DefaultK8sApiClient(ApiClient realK8sClient, @Json ObjectMapper jsonMapper)
@@ -74,6 +74,16 @@ public class DefaultK8sApiClient implements K8sApiClient
     this.coreV1Api = new CoreV1Api(realK8sClient);
     this.jsonMapper = jsonMapper;
     this.podClient = new GenericKubernetesApi<>(V1Pod.class, V1PodList.class, "", "v1", "pods", realK8sClient);
+  }
+
+  public void setCoreV1Api(CoreV1Api coreV1Api)
+  {
+    this.coreV1Api = coreV1Api;
+  }
+
+  public void setPodClient(GenericKubernetesApi<V1Pod, V1PodList> podClient)
+  {
+    this.podClient = podClient;
   }
 
   /**
