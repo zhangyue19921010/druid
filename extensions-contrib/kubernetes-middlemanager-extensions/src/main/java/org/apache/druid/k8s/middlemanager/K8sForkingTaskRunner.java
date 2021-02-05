@@ -541,7 +541,7 @@ public class K8sForkingTaskRunner
                     }
                   }
                   catch (Throwable t) {
-                    LOGGER.info(t, "Exception caught during execution");
+                    LOGGER.warn(t, "Exception caught during execution");
                     throw new RuntimeException(t);
                   }
                   finally {

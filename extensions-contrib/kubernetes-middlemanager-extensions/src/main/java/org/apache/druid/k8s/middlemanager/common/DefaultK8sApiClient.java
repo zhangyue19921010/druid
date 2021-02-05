@@ -320,12 +320,15 @@ public class DefaultK8sApiClient implements K8sApiClient
   {
     try {
       V1ConfigMapList v1ConfigMapList = coreV1Api.listNamespacedConfigMap(namespace, null, null, null, null, labelSelector, null, null, null, null);
+      if (v1ConfigMapList == null) {
+        return false;
+      }
       return !v1ConfigMapList.getItems().isEmpty();
     }
     catch (ApiException ex) {
       LOGGER.warn(ex, "Failed to get configMap[%s/%s], code[%d], error[%s].", namespace, labelSelector, ex.getCode(), ex.getResponseBody());
+      return false;
     }
-    return false;
   }
 
   /**

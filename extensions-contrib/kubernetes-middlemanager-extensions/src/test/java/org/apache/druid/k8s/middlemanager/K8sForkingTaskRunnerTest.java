@@ -20,16 +20,34 @@
 package org.apache.druid.k8s.middlemanager;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.ListenableFuture;
+import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1ConfigMap;
+import io.kubernetes.client.openapi.models.V1ConfigMapBuilder;
+import io.kubernetes.client.openapi.models.V1ConfigMapVolumeSource;
+import io.kubernetes.client.openapi.models.V1ContainerPort;
+import io.kubernetes.client.openapi.models.V1EnvVar;
+import io.kubernetes.client.openapi.models.V1EnvVarBuilder;
+import io.kubernetes.client.openapi.models.V1ObjectFieldSelector;
+import io.kubernetes.client.openapi.models.V1OwnerReference;
+import io.kubernetes.client.openapi.models.V1OwnerReferenceBuilder;
 import io.kubernetes.client.openapi.models.V1Pod;
+import io.kubernetes.client.openapi.models.V1PodBuilder;
 import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
+import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexing.common.config.TaskConfig;
 import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.config.ForkingTaskRunnerConfig;
 import org.apache.druid.indexing.worker.config.WorkerConfig;
+import org.apache.druid.jackson.DefaultObjectMapper;
+import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.k8s.middlemanager.common.DefaultK8sApiClient;
 import org.apache.druid.k8s.middlemanager.common.K8sApiClient;
 import org.apache.druid.server.DruidNode;
@@ -40,6 +58,8 @@ import org.easymock.EasyMockSupport;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Properties;
 
 public class K8sForkingTaskRunnerTest extends EasyMockSupport
@@ -50,7 +70,7 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
   private K8sApiClient k8sApiClient;
   private TaskLogPusher taskLogPusher;
   private ObjectMapper jsonMapper;
-  private DruidNode node;
+  private static final EmittingLogger LOGGER = new EmittingLogger(K8sForkingTaskRunnerTest.class);
 
 
   @Before
@@ -64,30 +84,134 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
     defaultK8sApiClient.setPodClient(podClient);
     this.k8sApiClient = defaultK8sApiClient;
     this.taskLogPusher = EasyMock.mock(TaskLogPusher.class);
-    this.jsonMapper = EasyMock.mock(ObjectMapper.class);
-    this.node = EasyMock.mock(DruidNode.class);
+    this.jsonMapper = new DefaultObjectMapper();
   }
 
-  @Test
-  public void testK8sForkingTAskRunnerRunAndStop()
+  @Test(timeout = 60_000L)
+  public void testK8sForkingTaskRunnerRunAndStop() throws Exception
   {
-    ForkingTaskRunnerConfig forkingTaskRunnerConfig = new ForkingTaskRunnerConfig();
-    TaskConfig taskConfig = new TaskConfig();
+    DruidNode node = new DruidNode("forkServiceName", "0.0.0.0", false, 8000, null, true, false);
+    ForkingTaskRunnerConfig forkingTaskRunnerConfig = jsonMapper.convertValue(ImmutableMap.of(
+            "javaOpts", "ab",
+            "classpath", "/aaa"), ForkingTaskRunnerConfig.class);
+    TaskConfig taskConfig = new TaskConfig(null, null, null, null, null, false, null, null, null);
     WorkerConfig workerConfig = new WorkerConfig();
     Properties properties = new Properties();
     StartupLoggingConfig startupLoggingConfig = new StartupLoggingConfig();
 
-    K8sForkingTaskRunner k8sForkingTaskRunner = new K8sForkingTaskRunner(forkingTaskRunnerConfig, taskConfig, workerConfig, properties, taskLogPusher, jsonMapper, node, startupLoggingConfig, k8sApiClient);
-    Task task = NoopTask.create();
-    k8sForkingTaskRunner.run(task);
+    K8sForkingTaskRunner k8sForkingTaskRunner = new K8sForkingTaskRunner(
+            forkingTaskRunnerConfig,
+            taskConfig,
+            workerConfig,
+            properties,
+            taskLogPusher,
+            jsonMapper,
+            node,
+            startupLoggingConfig,
+            k8sApiClient);
 
+    Task task = new NoopTask("forktaskid", null, null, 0, 0, null, null, null);
+    String taskID = task.getId();
+    final File taskDir = taskConfig.getTaskDir(task.getId());
+    EasyMock.expect(coreV1Api.listNamespacedConfigMap("default", null, null, null, null, "druid.ingest.task.id=" + taskID, null, null, null, null))
+            .andReturn(null)
+            .anyTimes();
+
+    V1OwnerReference owner = new V1OwnerReferenceBuilder()
+            .withName(System.getenv("POD_NAME"))
+            .withApiVersion("v1")
+            .withUid(System.getenv("POD_UID"))
+            .withKind("Pod")
+            .withController(true)
+            .build();
+
+    V1ConfigMap configMap = new V1ConfigMapBuilder()
+            .withNewMetadata()
+            .withOwnerReferences(owner)
+            .withName(taskID)
+            .withLabels(ImmutableMap.of("druid.ingest.task.id", taskID))
+            .endMetadata()
+            .withData(ImmutableMap.of("task.json", jsonMapper.writeValueAsString(task)))
+            .build();
+
+    EasyMock.expect(coreV1Api.createNamespacedConfigMap("default", configMap, null, null, null))
+            .andReturn(configMap)
+            .anyTimes();
+
+    final String configMapVolumeName = "task-json-vol-tmp";
+
+    V1VolumeMount configMapVolumeMount = new V1VolumeMount().name(configMapVolumeName).mountPath("/druidTmp");
+    V1ConfigMapVolumeSource configMapVolume = new V1ConfigMapVolumeSource().defaultMode(420).name(taskID);
+
+    ArrayList<V1VolumeMount> v1VolumeMounts = new ArrayList<>();
+    v1VolumeMounts.add(configMapVolumeMount);
+
+    V1EnvVar podIpEnv = new V1EnvVarBuilder()
+            .withName("POD_IP")
+            .withNewValueFrom()
+            .withFieldRef(new V1ObjectFieldSelector().fieldPath("status.podIP"))
+            .endValueFrom()
+            .build();
+
+    V1EnvVar task_id = new V1EnvVarBuilder()
+            .withName("TASK_ID")
+            .withNewValue(taskID)
+            .build();
+
+    V1EnvVar task_dir = new V1EnvVarBuilder()
+            .withName("TASK_DIR")
+            .withNewValue(taskDir.getAbsolutePath()).build();
+
+    V1EnvVar task_json_tmp_location = new V1EnvVarBuilder()
+            .withName("TASK_JSON_TMP_LOCATION")
+            .withNewValue("/druidTmp" + "/task.json").build();
+
+    V1Pod pod = new V1PodBuilder()
+            .withNewMetadata()
+            .withOwnerReferences(owner)
+            .withNamespace("default")
+            .withName(taskID)
+            .withLabels(ImmutableMap.of("druid.ingest.task.id", taskID))
+            .endMetadata()
+            .withNewSpec()
+            .withNewSecurityContext()
+            .withFsGroup(0L)
+            .withRunAsGroup(0L)
+            .withRunAsUser(0L)
+            .endSecurityContext()
+            .addNewVolume()
+            .withNewName(configMapVolumeName)
+            .withConfigMap(configMapVolume)
+            .endVolume()
+            .withNewRestartPolicy("Never")
+            .addNewContainer()
+            .withPorts(new V1ContainerPort().protocol("TCP").containerPort(8100).name("http"))
+            .withNewSecurityContext()
+            .withNewPrivileged(true)
+            .endSecurityContext()
+            .withCommand("/bin/sh", "-c")
+            .withArgs("")
+            .withName("peon")
+            .withImage("druid/cluster:v1")
+            .withImagePullPolicy("IfNotPresent")
+            .withVolumeMounts(v1VolumeMounts)
+            .withEnv(ImmutableList.of(podIpEnv, task_id, task_dir, task_json_tmp_location))
+            .withNewResources()
+            .withRequests(ImmutableMap.of("cpu", Quantity.fromString("1"), "memory", Quantity.fromString("2G")))
+            .withLimits(ImmutableMap.of("cpu", Quantity.fromString("1"), "memory", Quantity.fromString("2G")))
+            .endResources()
+            .endContainer()
+            .endSpec()
+            .build();
+
+    EasyMock.expect(coreV1Api.createNamespacedPod("default", pod, null, null, null))
+            .andReturn(pod)
+            .anyTimes();
+    EasyMock.replay(coreV1Api);
+
+    ListenableFuture<TaskStatus> taskFuture = k8sForkingTaskRunner.run(task);
+    while (!taskFuture.isDone()) {
+      Thread.sleep(1000);
+    }
   }
-
-
-
-
-
-
-
-
 }
