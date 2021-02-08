@@ -209,6 +209,14 @@ public class K8sForkingTaskRunner
                       }
 
                       final File reportsFile = new File(attemptDir, "report.json");
+                      if (!reportsFile.exists()) {
+                        if (attemptDir.exists()) {
+                          reportsFile.createNewFile();
+                        } else {
+                          attemptDir.mkdirs();
+                          reportsFile.createNewFile();
+                        }
+                      }
                       // time to adjust process holders
                       synchronized (tasks) {
                         // replace all the ": - . _" to "", try to reduce the length of pod name and meet pod naming specifications 63 charts.
