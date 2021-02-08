@@ -66,6 +66,7 @@ public class DefaultK8sApiClient implements K8sApiClient
   private CoreV1Api coreV1Api;
   private final ObjectMapper jsonMapper;
   private GenericKubernetesApi<V1Pod, V1PodList> podClient;
+  private PodLogs logs;
 
   @Inject
   public DefaultK8sApiClient(ApiClient realK8sClient, @Json ObjectMapper jsonMapper)
@@ -74,6 +75,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     this.coreV1Api = new CoreV1Api(realK8sClient);
     this.jsonMapper = jsonMapper;
     this.podClient = new GenericKubernetesApi<>(V1Pod.class, V1PodList.class, "", "v1", "pods", realK8sClient);
+    this.logs = new PodLogs(realK8sClient);
   }
 
   public void setCoreV1Api(CoreV1Api coreV1Api)
@@ -84,6 +86,11 @@ public class DefaultK8sApiClient implements K8sApiClient
   public void setPodClient(GenericKubernetesApi<V1Pod, V1PodList> podClient)
   {
     this.podClient = podClient;
+  }
+
+  public void setPodLogsClient(PodLogs logs)
+  {
+    this.logs = logs;
   }
 
   /**
@@ -344,7 +351,7 @@ public class DefaultK8sApiClient implements K8sApiClient
     String podName = peonPod.getMetadata().getName();
     try {
       V1PodList v1PodList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, labelSelector, null, null, null, null);
-      while (v1PodList.getItems().isEmpty() || getPodStatus(v1PodList.getItems().get(0)).equalsIgnoreCase("Pending")) {
+      while (v1PodList.getItems().isEmpty() || (v1PodList.getItems().size() > 0 && getPodStatus(v1PodList.getItems().get(0)).equalsIgnoreCase("Pending"))) {
         LOGGER.info("Still waiting for pod Running [%s/%s]", namespace, podName);
         Thread.sleep(3 * 1000);
         v1PodList = coreV1Api.listNamespacedPod(peonPod.getMetadata().getNamespace(), null, null, null, null, labelSelector, null, null, null, null);
@@ -354,8 +361,8 @@ public class DefaultK8sApiClient implements K8sApiClient
     catch (ApiException ex) {
       LOGGER.warn(ex, "Exception to wait for pod Running[%s/%s], code[%d], error[%s].", namespace, labelSelector, ex.getCode(), ex.getResponseBody());
     }
-    catch (InterruptedException ex) {
-      LOGGER.warn(ex, "InterruptedException when wait for pod Running [%s/%s]", namespace, podName);
+    catch (Exception ex) {
+      LOGGER.warn(ex, "Exception when wait for pod Running [%s/%s]", namespace, podName);
     }
   }
 
@@ -364,7 +371,6 @@ public class DefaultK8sApiClient implements K8sApiClient
   {
     String namespace = peonPod.getMetadata().getNamespace();
     String podName = peonPod.getMetadata().getName();
-    PodLogs logs = new PodLogs(realK8sClient);
     InputStream is = null;
     try {
       is = logs.streamNamespacedPodLog(peonPod);
@@ -382,18 +388,23 @@ public class DefaultK8sApiClient implements K8sApiClient
   public String waitForPodFinished(V1Pod peonPod)
   {
     String phase = getPodStatus(peonPod);
-    String namespace = peonPod.getMetadata().getNamespace();
-    String name = peonPod.getMetadata().getName();
+    String namespace = "";
+    String name = "";
+    try {
+      namespace = peonPod.getMetadata().getNamespace();
+      name = peonPod.getMetadata().getName();
 
-    while (!phase.equalsIgnoreCase("Failed") && !phase.equalsIgnoreCase("Succeeded")) {
-      try {
+      while (!phase.equalsIgnoreCase("Failed") && !phase.equalsIgnoreCase("Succeeded")) {
         LOGGER.info("Still wait for peon pod finished [%s/%s] current status is [%s]", namespace, name, phase);
         Thread.sleep(3 * 1000);
         phase = getPodStatus(peonPod);
       }
-      catch (InterruptedException ex) {
-        LOGGER.warn(ex, "Exception when wait for pod finished [%s/%s].", namespace, name);
-      }
+    }
+    catch (NullPointerException ex) {
+      LOGGER.warn(ex, "NullPointerException  when wait for pod finished [%s/%s].", namespace, name);
+    }
+    catch (InterruptedException ex) {
+      LOGGER.warn(ex, "InterruptedException  when wait for pod finished [%s/%s].", namespace, name);
     }
     return phase;
   }
@@ -401,8 +412,8 @@ public class DefaultK8sApiClient implements K8sApiClient
   @Override
   public String getPodStatus(V1Pod peonPod)
   {
-    V1ObjectMeta mt = peonPod.getMetadata();
     String phase = "Failed";
+    V1ObjectMeta mt = peonPod.getMetadata();
     try {
       phase = podClient.get(mt.getNamespace(), mt.getName()).getObject().getStatus().getPhase();
     }

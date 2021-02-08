@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListenableFuture;
+import io.kubernetes.client.PodLogs;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
@@ -40,6 +41,7 @@ import io.kubernetes.client.openapi.models.V1PodBuilder;
 import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
+import io.kubernetes.client.util.generic.KubernetesApiResponse;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexing.common.config.TaskConfig;
 import org.apache.druid.indexing.common.task.NoopTask;
@@ -55,10 +57,12 @@ import org.apache.druid.server.log.StartupLoggingConfig;
 import org.apache.druid.tasklogs.TaskLogPusher;
 import org.easymock.EasyMock;
 import org.easymock.EasyMockSupport;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.util.ArrayList;
 import java.util.Properties;
 
@@ -70,6 +74,7 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
   private K8sApiClient k8sApiClient;
   private TaskLogPusher taskLogPusher;
   private ObjectMapper jsonMapper;
+  private PodLogs podLogs;
   private static final EmittingLogger LOGGER = new EmittingLogger(K8sForkingTaskRunnerTest.class);
 
 
@@ -79,9 +84,11 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
     this.realK8sClient = EasyMock.mock(ApiClient.class);
     this.coreV1Api = EasyMock.mock(CoreV1Api.class);
     this.podClient = EasyMock.mock(GenericKubernetesApi.class);
-    DefaultK8sApiClient defaultK8sApiClient = new DefaultK8sApiClient(realK8sClient, null);
+    this.podLogs = EasyMock.mock(PodLogs.class);
+    DefaultK8sApiClient defaultK8sApiClient = new TesableDefaultK8sApiClient(realK8sClient, null);
     defaultK8sApiClient.setCoreV1Api(coreV1Api);
     defaultK8sApiClient.setPodClient(podClient);
+    defaultK8sApiClient.setPodLogsClient(podLogs);
     this.k8sApiClient = defaultK8sApiClient;
     this.taskLogPusher = EasyMock.mock(TaskLogPusher.class);
     this.jsonMapper = new DefaultObjectMapper();
@@ -113,7 +120,7 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
     Task task = new NoopTask("forktaskid", null, null, 0, 0, null, null, null);
     String taskID = task.getId();
     final File taskDir = taskConfig.getTaskDir(task.getId());
-    EasyMock.expect(coreV1Api.listNamespacedConfigMap("default", null, null, null, null, "druid.ingest.task.id=" + taskID, null, null, null, null))
+    EasyMock.expect(coreV1Api.listNamespacedConfigMap(EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull()))
             .andReturn(null)
             .anyTimes();
 
@@ -202,16 +209,55 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
             .endResources()
             .endContainer()
             .endSpec()
+            .withNewStatus()
+            .addNewPodIP()
+            .withNewIp("0.0.0.1")
+            .endPodIP()
+            .endStatus()
             .build();
 
-    EasyMock.expect(coreV1Api.createNamespacedPod("default", pod, null, null, null))
+    EasyMock.expect(coreV1Api.createNamespacedPod(EasyMock.anyString(), EasyMock.anyObject(V1Pod.class), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull()))
             .andReturn(pod)
             .anyTimes();
+
+    V1PodList v1PodListEmpty = new V1PodList();
+    V1PodList v1PodList = new V1PodList().addItemsItem(pod);
+    EasyMock.expect(coreV1Api.listNamespacedPod(EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull()))
+            .andReturn(v1PodListEmpty).once();
+    EasyMock.expect(coreV1Api.listNamespacedPod(EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull()))
+            .andReturn(v1PodList).once();
+    EasyMock.expect(coreV1Api.deleteCollectionNamespacedConfigMap(EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.anyInt(), EasyMock.anyString(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull(), EasyMock.isNull())).andReturn(null).anyTimes();
     EasyMock.replay(coreV1Api);
+
+
+    KubernetesApiResponse<V1Pod> response = new KubernetesApiResponse<V1Pod>(pod);
+    EasyMock.expect(podClient.get(EasyMock.anyString(), EasyMock.anyString())).andReturn(response).anyTimes();
+    EasyMock.expect(podClient.delete(EasyMock.anyString(), EasyMock.anyString())).andReturn(null).anyTimes();
+    EasyMock.replay(podClient);
+
+    EasyMock.expect(podLogs.streamNamespacedPodLog(EasyMock.anyObject(V1Pod.class))).andReturn(new FileInputStream(new File("src/test/resources/logExample.txt"))).anyTimes();
+    EasyMock.replay(podLogs);
 
     ListenableFuture<TaskStatus> taskFuture = k8sForkingTaskRunner.run(task);
     while (!taskFuture.isDone()) {
       Thread.sleep(1000);
+    }
+    TaskStatus taskStatus = taskFuture.get();
+    Assert.assertTrue(taskStatus.getStatusCode().isSuccess());
+  }
+
+
+  private static class TesableDefaultK8sApiClient extends DefaultK8sApiClient
+  {
+    public TesableDefaultK8sApiClient(ApiClient realK8sClient, ObjectMapper jsonMapper)
+    {
+      super(realK8sClient, jsonMapper);
+    }
+
+    @Override
+    public String getPodStatus(V1Pod peonPod)
+    {
+      return "Succeeded";
     }
   }
 }
