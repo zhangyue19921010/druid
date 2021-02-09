@@ -123,6 +123,7 @@ import org.eclipse.jetty.server.Server;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -158,7 +159,6 @@ public class CliPeon extends GuiceRunnable
   public String serverType = "indexer-executor";
 
   private boolean isZkEnabled = true;
-  private boolean isRunningOnK8s = false;
 
   /**
    * If set to "true", the peon will bind classes necessary for loading broadcast segments. This is used for
@@ -170,6 +170,8 @@ public class CliPeon extends GuiceRunnable
   private static final Logger log = new Logger(CliPeon.class);
 
   private Properties properties;
+  private HashMap<String, Object> k8sConfig = new HashMap<>();
+  static final String IS_RUNNING_ON_K8S = "isRunningOnK8s";
 
   public CliPeon()
   {
@@ -181,7 +183,9 @@ public class CliPeon extends GuiceRunnable
   {
     this.properties = properties;
     isZkEnabled = ZkEnablementConfig.isEnabled(properties);
-    isRunningOnK8s = properties.getProperty("druid.indexer.runner.mode", "local").equalsIgnoreCase("k8s");
+    k8sConfig.putIfAbsent(
+            IS_RUNNING_ON_K8S,
+            properties.getProperty("druid.indexer.runner.mode", "native").equalsIgnoreCase("k8s"));
   }
 
   @Override
@@ -217,7 +221,7 @@ public class CliPeon extends GuiceRunnable
             binder.bind(ExecutorLifecycle.class).in(ManageLifecycle.class);
             LifecycleModule.register(binder, ExecutorLifecycle.class);
 
-            if (isRunningOnK8s) {
+            if (Boolean.parseBoolean(String.valueOf(k8sConfig.getOrDefault(IS_RUNNING_ON_K8S, "false")))) {
               binder.bind(ExecutorLifecycleConfig.class).toInstance(
                       new ExecutorLifecycleConfig()
                               .setTaskFile(new File(taskLogPath))

@@ -27,13 +27,20 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.util.Config;
 import okhttp3.OkHttpClient;
+import org.apache.druid.guice.Binders;
 import org.apache.druid.guice.JsonConfigProvider;
 import org.apache.druid.guice.LazySingleton;
 import org.apache.druid.guice.PolyBind;
+import org.apache.druid.indexing.common.config.FileTaskLogsConfig;
+import org.apache.druid.indexing.common.tasklogs.FileTaskLogs;
 import org.apache.druid.indexing.overlord.TaskRunner;
 import org.apache.druid.initialization.DruidModule;
 import org.apache.druid.k8s.middlemanager.common.DefaultK8sApiClient;
 import org.apache.druid.k8s.middlemanager.common.K8sApiClient;
+import org.apache.druid.tasklogs.NoopTaskLogs;
+import org.apache.druid.tasklogs.TaskLogKiller;
+import org.apache.druid.tasklogs.TaskLogPusher;
+import org.apache.druid.tasklogs.TaskLogs;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -54,6 +61,7 @@ public class K8sMiddleManagerModule implements DruidModule
     );
     biddy.addBinding(INDEXER_RUNNER_MODE_K8S).to(K8sForkingTaskRunner.class).in(LazySingleton.class);
     binder.bind(K8sForkingTaskRunner.class).in(LazySingleton.class);
+    configureTaskLogs(binder);
 
     bindK8sClient(binder);
   }
@@ -86,6 +94,21 @@ public class K8sMiddleManagerModule implements DruidModule
             )
             .in(LazySingleton.class);
     binder.bind(K8sApiClient.class).to(DefaultK8sApiClient.class).in(LazySingleton.class);
+  }
+
+  private void configureTaskLogs(Binder binder)
+  {
+    PolyBind.createChoice(binder, "druid.indexer.logs.type", Key.get(TaskLogs.class), Key.get(FileTaskLogs.class));
+    JsonConfigProvider.bind(binder, "druid.indexer.logs", FileTaskLogsConfig.class);
+
+    final MapBinder<String, TaskLogs> taskLogBinder = Binders.taskLogsBinder(binder);
+    taskLogBinder.addBinding("noop").to(NoopTaskLogs.class).in(LazySingleton.class);
+    taskLogBinder.addBinding("file").to(FileTaskLogs.class).in(LazySingleton.class);
+    binder.bind(NoopTaskLogs.class).in(LazySingleton.class);
+    binder.bind(FileTaskLogs.class).in(LazySingleton.class);
+
+    binder.bind(TaskLogPusher.class).to(TaskLogs.class);
+    binder.bind(TaskLogKiller.class).to(TaskLogs.class);
   }
 
   @Override
