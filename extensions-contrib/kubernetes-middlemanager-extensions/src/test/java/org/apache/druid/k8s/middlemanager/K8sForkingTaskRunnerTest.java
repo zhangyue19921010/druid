@@ -83,7 +83,7 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
   }
 
   @Test(timeout = 60_000L)
-  public void testK8sForkingTaskRunnerRunAndStop() throws Exception
+  public void testK8sForkingTaskRunnerRunAndFinished() throws Exception
   {
     DefaultK8sApiClient k8sApiClient = new DefaultK8sApiClient(realK8sClient, jsonMapper);
     k8sApiClient.setCoreV1Api(coreV1Api);
@@ -196,6 +196,18 @@ public class K8sForkingTaskRunnerTest extends EasyMockSupport
     EasyMock.replay(podLogs);
 
     ListenableFuture<TaskStatus> taskFuture = k8sForkingTaskRunner.run(task);
+
+    // No exceptions will be threw.
+    k8sForkingTaskRunner.getBlacklistedTaskSlotCount();
+    k8sForkingTaskRunner.getIdleTaskSlotCount();
+    k8sForkingTaskRunner.getLazyTaskSlotCount();
+    k8sForkingTaskRunner.getPendingTasks();
+    k8sForkingTaskRunner.getTotalTaskSlotCount();
+    k8sForkingTaskRunner.getUsedTaskSlotCount();
+    k8sForkingTaskRunner.getRunningTasks();
+    k8sForkingTaskRunner.getScalingStats();
+    k8sForkingTaskRunner.getKnownTasks();
+
     while (!taskFuture.isDone()) {
       Thread.sleep(1000);
     }
