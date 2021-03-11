@@ -873,6 +873,7 @@ public class KinesisRecordSupplier implements RecordSupplier<String, String, Byt
       GetRecordsResult recordsResult = kinesis.getRecords(
           new GetRecordsRequest().withShardIterator(shardIterator).withLimit(1)
       );
+      log.info("------------------------------------------------------------- CurrentOffset[%s] and Lag[%s] -------------------------------------------------------------", offsetToUse, recordsResult.getMillisBehindLatest());
 
       return recordsResult.getMillisBehindLatest();
     });
