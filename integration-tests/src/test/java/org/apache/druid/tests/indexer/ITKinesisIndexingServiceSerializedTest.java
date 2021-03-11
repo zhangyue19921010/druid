@@ -41,23 +41,23 @@ public class ITKinesisIndexingServiceSerializedTest extends AbstractKinesisIndex
     doBeforeClass();
   }
 
-  /**
-   * This test must be run individually since the test affect and modify the state of the Druid cluster
-   */
-  @Test
-  public void testKinesisIndexDataWithLosingCoordinator() throws Exception
-  {
-    doTestIndexDataWithLosingCoordinator(null);
-  }
-
-  /**
-   * This test must be run individually since the test affect and modify the state of the Druid cluster
-   */
-  @Test
-  public void testKinesisIndexDataWithLosingOverlord() throws Exception
-  {
-    doTestIndexDataWithLosingOverlord(null);
-  }
+//  /**
+//   * This test must be run individually since the test affect and modify the state of the Druid cluster
+//   */
+//  @Test
+//  public void testKinesisIndexDataWithLosingCoordinator() throws Exception
+//  {
+//    doTestIndexDataWithLosingCoordinator(null);
+//  }
+//
+//  /**
+//   * This test must be run individually since the test affect and modify the state of the Druid cluster
+//   */
+//  @Test
+//  public void testKinesisIndexDataWithLosingOverlord() throws Exception
+//  {
+//    doTestIndexDataWithLosingOverlord(null);
+//  }
 
   /**
    * This test can be run concurrently with other tests as it creates/modifies/teardowns a unique datasource
@@ -69,39 +69,39 @@ public class ITKinesisIndexingServiceSerializedTest extends AbstractKinesisIndex
     doTestIndexDataWithAutoscaler(false);
   }
 
-  /**
-   * This test must be run individually since the test affect and modify the state of the Druid cluster
-   */
-  @Test
-  public void testKinesisIndexDataWithLosingHistorical() throws Exception
-  {
-    doTestIndexDataWithLosingHistorical(null);
-  }
-
-  /**
-   * This test must be run individually due to their resource consumption requirement (task slot, memory, etc.)
-   */
-  @Test
-  public void testKinesisIndexDataWithStartStopSupervisor() throws Exception
-  {
-    doTestIndexDataWithStartStopSupervisor(null);
-  }
-
-  /**
-   * This test must be run individually due to their resource consumption requirement (task slot, memory, etc.)
-   */
-  @Test
-  public void testKinesisIndexDataWithKinesisReshardSplit() throws Exception
-  {
-    doTestIndexDataWithStreamReshardSplit(null);
-  }
-
-  /**
-   * This test must be run individually due to their resource consumption requirement (task slot, memory, etc.)
-   */
-  @Test
-  public void testKinesisIndexDataWithKinesisReshardMerge() throws Exception
-  {
-    doTestIndexDataWithStreamReshardMerge();
-  }
+//  /**
+//   * This test must be run individually since the test affect and modify the state of the Druid cluster
+//   */
+//  @Test
+//  public void testKinesisIndexDataWithLosingHistorical() throws Exception
+//  {
+//    doTestIndexDataWithLosingHistorical(null);
+//  }
+//
+//  /**
+//   * This test must be run individually due to their resource consumption requirement (task slot, memory, etc.)
+//   */
+//  @Test
+//  public void testKinesisIndexDataWithStartStopSupervisor() throws Exception
+//  {
+//    doTestIndexDataWithStartStopSupervisor(null);
+//  }
+//
+//  /**
+//   * This test must be run individually due to their resource consumption requirement (task slot, memory, etc.)
+//   */
+//  @Test
+//  public void testKinesisIndexDataWithKinesisReshardSplit() throws Exception
+//  {
+//    doTestIndexDataWithStreamReshardSplit(null);
+//  }
+//
+//  /**
+//   * This test must be run individually due to their resource consumption requirement (task slot, memory, etc.)
+//   */
+//  @Test
+//  public void testKinesisIndexDataWithKinesisReshardMerge() throws Exception
+//  {
+//    doTestIndexDataWithStreamReshardMerge();
+//  }
 }
